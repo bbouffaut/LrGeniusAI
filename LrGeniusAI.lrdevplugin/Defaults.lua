@@ -1,5 +1,12 @@
 Defaults = {}
 
+local function safeLoc(key)
+    if LOC then
+        return LOC(key)
+    end
+    return key:match("=([^=]*)$") or key
+end
+
 Defaults.defaultTopLevelKeywords = {
     "LrGeniusAI",
     "Ollama",
@@ -17,26 +24,26 @@ Defaults.generateLanguages = { "English", "German", "French", "Spanish", "Italia
 Defaults.defaultTemperature = 0.1
 
 Defaults.defaultKeywordCategories = {
-    LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Activities=Activities",
-    LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Buildings=Buildings",
-    LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Location=Location",
-    LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Objects=Objects",
-    LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/People=People",
-    LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Moods=Moods",
-    LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Sceneries=Sceneries",
-    LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Texts=Texts",
-    LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Companies=Companies",
-    LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Weather=Weather",
-    LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Plants=Plants",
-    LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Animals=Animals",
-    LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Vehicles=Vehicles",
+    safeLoc("$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Activities=Activities"),
+    safeLoc("$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Buildings=Buildings"),
+    safeLoc("$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Location=Location"),
+    safeLoc("$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Objects=Objects"),
+    safeLoc("$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/People=People"),
+    safeLoc("$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Moods=Moods"),
+    safeLoc("$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Sceneries=Sceneries"),
+    safeLoc("$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Texts=Texts"),
+    safeLoc("$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Companies=Companies"),
+    safeLoc("$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Weather=Weather"),
+    safeLoc("$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Plants=Plants"),
+    safeLoc("$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Animals=Animals"),
+    safeLoc("$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Vehicles=Vehicles"),
 }
 
 Defaults.targetDataFields = {
-    { title = LOC "$$$/lrc-ai-assistant/PluginInfoDialogSections/keywords=Keywords", value = "keyword" },
-    { title = LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/ImageTitle=Image title", value = "title" },
-    { title = LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/ImageCaption=Image caption", value = "caption" },
-    { title = LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/ImageAltText=Image Alt Text", value = "altTextAccessibility" },
+    { title = safeLoc("$$$/lrc-ai-assistant/PluginInfoDialogSections/keywords=Keywords"), value = "keyword" },
+    { title = safeLoc("$$$/lrc-ai-assistant/Defaults/ResponseStructure/ImageTitle=Image title"), value = "title" },
+    { title = safeLoc("$$$/lrc-ai-assistant/Defaults/ResponseStructure/ImageCaption=Image caption"), value = "caption" },
+    { title = safeLoc("$$$/lrc-ai-assistant/Defaults/ResponseStructure/ImageAltText=Image Alt Text"), value = "altTextAccessibility" },
 }
 
 Defaults.exportSizes = {
@@ -106,7 +113,6 @@ Defaults.credits = {
 }
 
 Defaults.copyrightString = ""
-local f = LrView.osFactory()
 for _, credit in ipairs(Defaults.credits) do
     Defaults.copyrightString = Defaults.copyrightString .. string.format("%s (%s)\n", credit.name, credit.url)
 end

@@ -225,6 +225,18 @@ function _G.JSON.assert(b, m)
     LrDialogs.showError("Error decoding JSON response.")
 end
 
+require "UpdateCheck"
+require "APISearchIndex"
+
+local catalog = LrApplication.activeCatalog()
+if catalog:getPropertyForPlugin("needsMigration") then
+    LrDialogs.message(
+        LOC "$$$/lrc-ai-assistant/MetadataProvider/MigrationDetected=Migration from LrGeniusTagAI detected.",
+        LOC "$$$/lrc-ai-assistant/MetadataProvider/MigrationMessage=Please run 'Import Metadata from Catalog' from the LrGeniusAI menu to import AI-generated keywords into the new database of LrGeniusAI."
+    )
+    catalog:setPropertyForPlugin("needsMigration", false)
+end
+
 if prefs.periodicalUpdateCheck then
     LrTasks.startAsyncTask(function()
         -- Check for updates in the background
@@ -245,7 +257,5 @@ end)
 require "MetadataManager"
 require "KeywordConfigProvider"
 require "PromptConfigProvider"
-require "UpdateCheck"
 require "ErrorHandler"
-require "APISearchIndex"
 require "PhotoSelector"

@@ -1,3 +1,5 @@
+local pluginId = (_PLUGIN and _PLUGIN.id) or "LrGeniusAI"
+
 return {
     title = "LrGeniusAI",
     id = 'lrgeniusTagset',
@@ -21,8 +23,8 @@ return {
         { 'com.adobe.caption', height_in_lines = 5 },
         { 'com.adobe.altTextAccessibility', height_in_lines = 5 },
         'com.adobe.separator',
-        _PLUGIN.id .. '.aiModel',
-        _PLUGIN.id .. '.aiLastRun',
+        pluginId .. '.aiModel',
+        pluginId .. '.aiLastRun',
         -- _PLUGIN.id .. ".overall_score",
         -- _PLUGIN.id .. ".composition_score",
         -- _PLUGIN.id .. ".lighting_score",
@@ -30,7 +32,7 @@ return {
         -- _PLUGIN.id .. ".colors_score",
         -- _PLUGIN.id .. ".emotion_score",
         -- { _PLUGIN.id .. ".quality_critique", height_in_lines = 5 },
-        { _PLUGIN.id .. '.photoContext', height_in_lines = 5 },
+        { pluginId .. '.photoContext', height_in_lines = 5 },
 
     },
 }

@@ -3,6 +3,8 @@
 
 SearchIndexAPI = {}
 
+require "MetadataManager"
+
 local function baseUrl()
     local url
     if prefs.useLocalServer then

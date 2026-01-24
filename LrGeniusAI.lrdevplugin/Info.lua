@@ -1,5 +1,12 @@
 Info = {}
 
+local function safeLoc(key)
+	if LOC then
+		return LOC(key)
+	end
+	return key:match("=([^=]*)$") or key
+end
+
 Info.MAJOR = 2
 Info.MINOR = 2
 Info.REVISION = 0
@@ -18,44 +25,44 @@ return {
 
 	VERSION = Info.VERSION,
 
-	LrMetadataProvider = "MetadataProvider.lua",
+	-- LrMetadataProvider = "MetadataProvider.lua",
 	LrMetadataTagsetFactory = "MetadataTagset.lua",
 
 
 	LrLibraryMenuItems = {
 		{
-			title = LOC "$$$/LrGeniusAI/Menu/AnalyzeAndIndex=Analyze & Index Photos...",
+			title = safeLoc("$$$/LrGeniusAI/Menu/AnalyzeAndIndex=Analyze & Index Photos..."),
 			file = "TaskAnalyzeAndIndex.lua",
 		},
 		{
-			title = LOC "$$$/LrGeniusAI/Menu/AdvancedSearch=Advanced Search...",
+			title = safeLoc("$$$/LrGeniusAI/Menu/AdvancedSearch=Advanced Search..."),
 			file = "TaskSemanticSearch.lua",
 		},
 		{
-			title = LOC "$$$/LrGeniusAI/Menu/RetrieveMetadata=Retrieve Metadata from Backend...",
+			title = safeLoc("$$$/LrGeniusAI/Menu/RetrieveMetadata=Retrieve Metadata from Backend..."),
 			file = "TaskRetrieveMetadata.lua",
 		},
 		{
-			title = LOC "$$$/LrGeniusAI/Menu/ImportMetadata=Import Metadata from Catalog...",
+			title = safeLoc("$$$/LrGeniusAI/Menu/ImportMetadata=Import Metadata from Catalog..."),
 			file = "TaskImportMetadata.lua",
 		},
 	},
 
 	LrExportMenuItems = {
 		{
-			title = LOC "$$$/LrGeniusAI/Menu/AnalyzeAndIndex=Analyze & Index Photos...",
+			title = safeLoc("$$$/LrGeniusAI/Menu/AnalyzeAndIndex=Analyze & Index Photos..."),
 			file = "TaskAnalyzeAndIndex.lua",
 		},
 		{
-			title = LOC "$$$/LrGeniusAI/Menu/AdvancedSearch=Advanced Search...",
+			title = safeLoc("$$$/LrGeniusAI/Menu/AdvancedSearch=Advanced Search..."),
 			file = "TaskSemanticSearch.lua",
 		},
 		{
-			title = LOC "$$$/LrGeniusAI/Menu/RetrieveMetadata=Retrieve Metadata from Backend...",
+			title = safeLoc("$$$/LrGeniusAI/Menu/RetrieveMetadata=Retrieve Metadata from Backend..."),
 			file = "TaskRetrieveMetadata.lua",
 		},
 		{
-			title = LOC "$$$/LrGeniusAI/Menu/ImportMetadata=Import Metadata from Catalog...",
+			title = safeLoc("$$$/LrGeniusAI/Menu/ImportMetadata=Import Metadata from Catalog..."),
 			file = "TaskImportMetadata.lua",
 		},
 	},

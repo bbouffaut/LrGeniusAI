@@ -2,6 +2,9 @@
 -- Unified task for analyzing photos with AI (metadata + quality scores) and indexing them.
 -- Combines the old TaskAnalyzeImage and TaskManageIndex into one streamlined workflow.
 
+require "KeywordConfigProvider"
+require "PhotoSelector"
+
 
 ---
 -- Shows the main configuration dialog for analyze and index task.

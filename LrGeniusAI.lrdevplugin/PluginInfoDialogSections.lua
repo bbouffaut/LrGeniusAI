@@ -1,6 +1,63 @@
 PluginInfoDialogSections = {}
 
+local function ensureGlobals()
+    _G.LrPrefs = _G.LrPrefs or import 'LrPrefs'
+    _G.LrView = _G.LrView or import 'LrView'
+    _G.LrTasks = _G.LrTasks or import 'LrTasks'
+    _G.LrDialogs = _G.LrDialogs or import 'LrDialogs'
+    _G.LrHttp = _G.LrHttp or import 'LrHttp'
+    _G.LrShell = _G.LrShell or import 'LrShell'
+
+    _G.prefs = _G.prefs or _G.LrPrefs.prefsForPlugin()
+    _G.log = _G.log or import 'LrLogger' ('LrGeniusAI')
+    _G.log:enable('logfile')
+
+    if not _G.Defaults then require "Defaults" end
+    if not _G.Util then require "Util" end
+    if not _G.PromptConfigProvider then require "PromptConfigProvider" end
+    if not _G.SearchIndexAPI then require "APISearchIndex" end
+
+    if _G.prefs.logging == nil then _G.prefs.logging = true end
+    if _G.prefs.perfLogging == nil then _G.prefs.perfLogging = false end
+    if _G.prefs.geminiApiKey == nil then _G.prefs.geminiApiKey = "" end
+    if _G.prefs.chatgptApiKey == nil then _G.prefs.chatgptApiKey = "" end
+    if _G.prefs.generateTitle == nil then _G.prefs.generateTitle = true end
+    if _G.prefs.generateKeywords == nil then _G.prefs.generateKeywords = true end
+    if _G.prefs.generateCaption == nil then _G.prefs.generateCaption = true end
+    if _G.prefs.generateAltText == nil then _G.prefs.generateAltText = true end
+    if _G.prefs.reviewAltText == nil then _G.prefs.reviewAltText = false end
+    if _G.prefs.reviewCaption == nil then _G.prefs.reviewCaption = false end
+    if _G.prefs.reviewTitle == nil then _G.prefs.reviewTitle = false end
+    if _G.prefs.reviewKeywords == nil then _G.prefs.reviewKeywords = false end
+    if _G.prefs.enableValidation == nil then _G.prefs.enableValidation = true end
+    if _G.prefs.showCosts == nil then _G.prefs.showCosts = true end
+    if _G.prefs.generateLanguage == nil then _G.prefs.generateLanguage = Defaults.defaultGenerateLanguage end
+    if _G.prefs.replaceSS == nil then _G.prefs.replaceSS = false end
+    if _G.prefs.exportSize == nil then _G.prefs.exportSize = Defaults.defaultExportSize end
+    if _G.prefs.exportQuality == nil then _G.prefs.exportQuality = Defaults.defaultExportQuality end
+    if _G.prefs.showPreflightDialog == nil then _G.prefs.showPreflightDialog = true end
+    if _G.prefs.showPhotoContextDialog == nil then _G.prefs.showPhotoContextDialog = true end
+    if _G.prefs.task == nil then _G.prefs.task = Defaults.defaultTask end
+    if _G.prefs.systemInstruction == nil then _G.prefs.systemInstruction = "" end
+    if _G.prefs.submitKeywords == nil then _G.prefs.submitKeywords = true end
+    if _G.prefs.submitGPS == nil then _G.prefs.submitGPS = true end
+    if _G.prefs.temperature == nil then _G.prefs.temperature = Defaults.defaultTemperature end
+    if _G.prefs.useKeywordHierarchy == nil then _G.prefs.useKeywordHierarchy = true end
+    if _G.prefs.useTopLevelKeyword == nil then _G.prefs.useTopLevelKeyword = true end
+    if _G.prefs.prompts == nil then _G.prefs.prompts = { Default = Defaults.defaultSystemInstruction } end
+    if _G.prefs.prompt == nil then _G.prefs.prompt = "Default" end
+    if _G.prefs.ollamaBaseUrl == nil then _G.prefs.ollamaBaseUrl = "http://localhost:11434" end
+    if _G.prefs.useLocalServer == nil then _G.prefs.useLocalServer = false end
+    if _G.prefs.serverBaseUrl == nil then _G.prefs.serverBaseUrl = "http://127.0.0.1:19819" end
+    if _G.prefs.serverDbPath == nil then _G.prefs.serverDbPath = "" end
+    if _G.prefs.licenseKey == nil then _G.prefs.licenseKey = "" end
+    if _G.prefs.periodicalUpdateCheck == nil then _G.prefs.periodicalUpdateCheck = false end
+    if _G.prefs.submitFolderName == nil then _G.prefs.submitFolderName = false end
+    if _G.prefs.useLightroomKeywords == nil then _G.prefs.useLightroomKeywords = false end
+end
+
 function PluginInfoDialogSections.startDialog(propertyTable)
+    ensureGlobals()
 
     propertyTable.useClip = prefs.useClip
 
@@ -99,6 +156,7 @@ function PluginInfoDialogSections.startDialog(propertyTable)
 end
 
 function PluginInfoDialogSections.sectionsForBottomOfDialog(f, propertyTable)
+    ensureGlobals()
     local bind = LrView.bind
     local share = LrView.share
 
@@ -168,6 +226,7 @@ function PluginInfoDialogSections.sectionsForBottomOfDialog(f, propertyTable)
 end
 
 function PluginInfoDialogSections.sectionsForTopOfDialog(f, propertyTable)
+    ensureGlobals()
 
     local bind = LrView.bind
     local share = LrView.share
