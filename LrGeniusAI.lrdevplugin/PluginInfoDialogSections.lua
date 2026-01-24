@@ -68,10 +68,24 @@ function PluginInfoDialogSections.startDialog(propertyTable)
         properties.prompts[properties.prompt] = newValue
     end)
 
+    propertyTable:addObserver('useLocalServer', function(properties, key, newValue)
+        properties.serverDbPathEnabled = not newValue
+        prefs.useLocalServer = newValue
+        if SearchIndexAPI and SearchIndexAPI.shutdownServer and SearchIndexAPI.startServer then
+            if newValue then
+                SearchIndexAPI.shutdownServer()
+            else
+                SearchIndexAPI.startServer()
+            end
+        end
+    end)
+
     propertyTable.ollamaBaseUrl = prefs.ollamaBaseUrl
 
     propertyTable.useLocalServer = prefs.useLocalServer
     propertyTable.serverBaseUrl = prefs.serverBaseUrl
+    propertyTable.serverDbPath = prefs.serverDbPath
+    propertyTable.serverDbPathEnabled = not prefs.useLocalServer
 
     propertyTable.licenseKey = prefs.licenseKey
 
@@ -312,6 +326,18 @@ function PluginInfoDialogSections.sectionsForTopOfDialog(f, propertyTable)
                         enabled = bind 'useLocalServer',
                     },
                 },
+                f:row {
+                    f:static_text {
+                        title = LOC "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverDbPath=Local server DB path",
+                        width = share 'labelWidth'
+                    },
+                    f:edit_field {
+                        value = bind 'serverDbPath',
+                        width = share 'inputWidth',
+                        width_in_chars = 30,
+                        enabled = bind 'serverDbPathEnabled',
+                    },
+                },
             },
             f:group_box {
                 width = share 'groupBoxWidth',
@@ -391,6 +417,7 @@ function PluginInfoDialogSections.endDialog(propertyTable)
 
     prefs.useLocalServer = propertyTable.useLocalServer
     prefs.serverBaseUrl = propertyTable.serverBaseUrl
+    prefs.serverDbPath = propertyTable.serverDbPath
 
     if wasUsingLocalServer and not propertyTable.useLocalServer then
         SearchIndexAPI.startServer()

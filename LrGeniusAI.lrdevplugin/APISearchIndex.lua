@@ -728,6 +728,9 @@ function SearchIndexAPI.startServer()
         return
     end
 
+    local defaultDbPath = LrPathUtils.child(LrPathUtils.parent(LrApplication.activeCatalog():getPath()), "lrgenius.db")
+    local dbPath = Util.nilOrEmpty(prefs.serverDbPath) and defaultDbPath or prefs.serverDbPath
+
     LrTasks.startAsyncTask(function()
         local startServerCmd = nil
         
@@ -735,13 +738,13 @@ function SearchIndexAPI.startServer()
             -- Set KMP_DUPLICATE_LIB_OK environment variable to fix OpenMP library conflict in PyInstaller builds
             local envCmd = "set KMP_DUPLICATE_LIB_OK=TRUE &&"
             startServerCmd = "start /b /d \"" .. serverDir .. "\" \"\" cmd /c \"" .. envCmd .. " lrgenius-server.exe"
-            startServerCmd = startServerCmd .. " --db-path \"" .. LrPathUtils.child(LrPathUtils.parent(LrApplication.activeCatalog():getPath()), "lrgenius.db") .. "\""
+            startServerCmd = startServerCmd .. " --db-path \"" .. dbPath .. "\""
             startServerCmd = startServerCmd .. "\""
         else 
             -- Set environment variable for Mac as well
             local envPrefix = "KMP_DUPLICATE_LIB_OK=TRUE "
             startServerCmd = serverBinary
-            startServerCmd = envPrefix .. "\"" .. startServerCmd .. "\" --db-path \"" .. LrPathUtils.child(LrPathUtils.parent(LrApplication.activeCatalog():getPath()), "lrgenius.db") .. "\""
+            startServerCmd = envPrefix .. "\"" .. startServerCmd .. "\" --db-path \"" .. dbPath .. "\""
         end
         log:trace("Trying to start search index server with command: " .. startServerCmd)
         local result = LrTasks.execute(startServerCmd)

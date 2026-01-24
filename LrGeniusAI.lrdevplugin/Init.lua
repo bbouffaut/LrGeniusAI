@@ -166,6 +166,10 @@ if _G.prefs.serverBaseUrl == nil then
     _G.prefs.serverBaseUrl = "http://127.0.0.1:19819"
 end
 
+if _G.prefs.serverDbPath == nil then
+    _G.prefs.serverDbPath = LrPathUtils.child(LrPathUtils.parent(LrApplication.activeCatalog():getPath()), "lrgenius.db")
+end
+
 if _G.prefs.licenseKey == nil then
     _G.prefs.licenseKey = ""
 end

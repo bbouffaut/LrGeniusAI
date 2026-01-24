@@ -79,6 +79,7 @@
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverSettings=Server settings"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/useLocalServer=Use external server"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverBaseUrl=Server base URL"
+"$$$/lrc-ai-assistant/PluginInfoDialogSections/serverDbPath=Chemin de la base de donnees du serveur local"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/useTopLevelKeyword=Utiliser les mots-clés racines"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/licenseKey=Clé de licence"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/activate=Activer"
