@@ -25,7 +25,7 @@ return {
 
 	VERSION = Info.VERSION,
 
-	-- LrMetadataProvider = "MetadataProvider.lua",
+	LrMetadataProvider = "MetadataProvider.lua",
 	LrMetadataTagsetFactory = "MetadataTagset.lua",
 
 
