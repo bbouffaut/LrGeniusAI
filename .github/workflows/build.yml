@@ -41,7 +41,7 @@ jobs:
       - name: Checkout geniusai-server repository
         uses: actions/checkout@v4
         with:
-          repository: LrGenius/geniusai-server
+          repository: bbouffaut/geniusai-server
           path: geniusai-server
           ref: ${{ github.event.inputs.server_version }}
 
