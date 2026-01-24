@@ -268,10 +268,19 @@ function MetadataManager.showValidationDialog(ctx, photo, response, options)
         },
     }
 
+    local dialogContents = f:scrolled_view {
+        dialogView,
+        fill_horizontal = 1,
+        height = 750,
+        width = 1000,
+        vertical_scroller = true,
+        horizontal_scroller = false,
+    }
+
     local result = LrDialogs.presentModalDialog({
         title = LOC "$$$/lrc-ai-assistant/AnalyzeImageTask/ReviewWindowTitle=Review results" .. (photo and (": " .. photo:getFormattedMetadata('fileName')) or ""),
         otherVerb = LOC "$$$/lrc-ai-assistant/AnalyzeImageTask/discard=Discard",
-        contents = dialogView,
+        contents = dialogContents,
     })
 
     local results = {}
