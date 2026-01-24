@@ -3,7 +3,18 @@
 
 SearchIndexAPI = {}
 
-local BASE_URL = "http://127.0.0.1:19819"
+local function baseUrl()
+    local url
+    if prefs.useLocalServer then
+        url = prefs.serverBaseUrl or "http://127.0.0.1:19819"
+    else
+        url = "http://127.0.0.1:19819"
+    end
+    if url:sub(-1) == "/" then
+        url = url:sub(1, -2)
+    end
+    return url
+end
 local ENDPOINTS = {
     INDEX = "/index",
     INDEX_BY_REFERENCE = "/index_by_reference",
@@ -149,7 +160,7 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
 
     options = options or {}
     
-    local url = BASE_URL .. ENDPOINTS.INDEX_BY_REFERENCE
+    local url = baseUrl() .. ENDPOINTS.INDEX_BY_REFERENCE
 
     local body = {
         path = filepath,
@@ -245,7 +256,7 @@ function SearchIndexAPI.searchIndex(searchTerm, qualitySort, photosToSearch)
         quality_sort = qualitySort,
     }
 
-    local url = BASE_URL .. ENDPOINTS.SEARCH
+    local url = baseUrl() .. ENDPOINTS.SEARCH
 
     if photosToSearch and #photosToSearch > 0 then
         -- Perform a scoped search via POST
@@ -271,11 +282,11 @@ function SearchIndexAPI.searchIndex(searchTerm, qualitySort, photosToSearch)
 end
 
 function SearchIndexAPI.getStats()
-    return _request('GET', BASE_URL .. ENDPOINTS.STATS)
+    return _request('GET', baseUrl() .. ENDPOINTS.STATS)
 end
 
 function SearchIndexAPI.getAllIndexedPhotoUUIDs(requireEmbeddings)
-    local url = BASE_URL .. ENDPOINTS.GET_IDS
+    local url = baseUrl() .. ENDPOINTS.GET_IDS
     -- If requireEmbeddings is true, only get UUIDs with real embeddings
     if requireEmbeddings then
         url = url .. "?has_embedding=true"
@@ -301,7 +312,7 @@ function SearchIndexAPI.getPhotoData(uuid)
         return nil
     end
     
-    local url = BASE_URL .. "/get"
+    local url = baseUrl() .. "/get"
     local body = { uuid = uuid }
     
     log:trace("Retrieving photo data for UUID: " .. uuid)
@@ -322,7 +333,7 @@ function SearchIndexAPI.getPhotoData(uuid)
 end
 
 function SearchIndexAPI.removeUUID(uuid)
-    local url = BASE_URL .. ENDPOINTS.REMOVE
+    local url = baseUrl() .. ENDPOINTS.REMOVE
     local body = { uuid = uuid }
     log:trace("Removing UUID: " .. uuid)
 
@@ -579,7 +590,7 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
             table.insert(metadataBatch, metadata)
 
             if #metadataBatch >= batchSize or i == numPhotos then
-                local response = _request('POST', BASE_URL .. ENDPOINTS.IMPORT_METADATA, { metadata_items = metadataBatch })
+                local response = _request('POST', baseUrl() .. ENDPOINTS.IMPORT_METADATA, { metadata_items = metadataBatch })
                 if response ~= nil and response.status == "processed" then
                     stats.success = stats.success + #metadataBatch
                 else
@@ -621,7 +632,7 @@ end
 
 
 function SearchIndexAPI.pingServer()
-    local url = BASE_URL .. "/ping"
+    local url = baseUrl() .. "/ping"
     local result, hdrs = LrHttp.get(url)
     if hdrs.status == 200 and result == "pong" then
         return true
@@ -636,7 +647,7 @@ function SearchIndexAPI.shutdownServer()
         return true
     end
 
-    local url = BASE_URL .. ENDPOINTS.SHUTDOWN
+    local url = baseUrl() .. ENDPOINTS.SHUTDOWN
     log:trace("Shutting down server")
     
     _request('POST', url)
@@ -696,6 +707,11 @@ end
 
 
 function SearchIndexAPI.startServer()
+    if prefs.useLocalServer then
+        log:trace("Using external search index server at " .. baseUrl())
+        return true
+    end
+
     if SearchIndexAPI.pingServer() then
         log:trace("Search index server is already running")
         return true
@@ -836,7 +852,7 @@ end
 -- @param geminiApiKey string|nil Gemini API key for listing Gemini models
 -- @return table|nil Response from server with format: { models = { qwen = {...}, ollama = {...}, ... } }
 function SearchIndexAPI.getModels(openaiApiKey, geminiApiKey)
-    local url = BASE_URL .. ENDPOINTS.MODELS
+    local url = baseUrl() .. ENDPOINTS.MODELS
     local body = { 
         openai_apikey = openaiApiKey, 
         gemini_apikey = geminiApiKey 
@@ -858,7 +874,7 @@ function SearchIndexAPI.startClipDownload()
         return
     end
 
-    local status, err = _request('GET', BASE_URL .. ENDPOINTS.STATUS_CLIP_DOWNLOAD)
+    local status, err = _request('GET', baseUrl() .. ENDPOINTS.STATUS_CLIP_DOWNLOAD)
     if not err and status ~= nil and status.status == "downloading" then
         log:trace("CLIP model download is already in progress")
         return
@@ -869,7 +885,7 @@ function SearchIndexAPI.startClipDownload()
         functionContext = nil,
     })
 
-    local url = BASE_URL .. ENDPOINTS.START_CLIP_DOWNLOAD
+    local url = baseUrl() .. ENDPOINTS.START_CLIP_DOWNLOAD
     local body = {}
 
     local res, err = _request('POST', url, body)
@@ -881,7 +897,7 @@ function SearchIndexAPI.startClipDownload()
 
     LrTasks.startAsyncTask(function()
         while true do
-            local status, err = _request('GET', BASE_URL .. ENDPOINTS.STATUS_CLIP_DOWNLOAD)
+            local status, err = _request('GET', baseUrl() .. ENDPOINTS.STATUS_CLIP_DOWNLOAD)
             if err then
                 ErrorHandler.handleError("Error downloading CLIP model", err)
                 if progressScope ~= nil then
@@ -915,7 +931,7 @@ end
 
 
 function SearchIndexAPI.isClipReady()
-    local url = BASE_URL .. ENDPOINTS.CLIP_STATUS
+    local url = baseUrl() .. ENDPOINTS.CLIP_STATUS
     local res, err = _request('GET', url)
     if err then
         log:error("isClipReady failed: " .. err)

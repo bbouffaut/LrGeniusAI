@@ -158,6 +158,14 @@ if _G.prefs.ollamaBaseUrl == nil then
     _G.prefs.ollamaBaseUrl = "http://localhost:11434"
 end
 
+if _G.prefs.useLocalServer == nil then
+    _G.prefs.useLocalServer = false
+end
+
+if _G.prefs.serverBaseUrl == nil then
+    _G.prefs.serverBaseUrl = "http://127.0.0.1:19819"
+end
+
 if _G.prefs.licenseKey == nil then
     _G.prefs.licenseKey = ""
 end
@@ -221,7 +229,9 @@ if prefs.periodicalUpdateCheck then
 end
 
 LrTasks.startAsyncTask(function()
-    SearchIndexAPI.startServer()
+    if not prefs.useLocalServer then
+        SearchIndexAPI.startServer()
+    end
     if prefs.enableOpenClip then
         SearchIndexAPI.isClipReady() -- To trigger load of the CLIP model.
     end

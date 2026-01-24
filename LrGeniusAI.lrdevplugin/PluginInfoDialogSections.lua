@@ -70,6 +70,9 @@ function PluginInfoDialogSections.startDialog(propertyTable)
 
     propertyTable.ollamaBaseUrl = prefs.ollamaBaseUrl
 
+    propertyTable.useLocalServer = prefs.useLocalServer
+    propertyTable.serverBaseUrl = prefs.serverBaseUrl
+
     propertyTable.licenseKey = prefs.licenseKey
 
     propertyTable.periodicalUpdateCheck = prefs.periodicalUpdateCheck
@@ -290,6 +293,28 @@ function PluginInfoDialogSections.sectionsForTopOfDialog(f, propertyTable)
             },
             f:group_box {
                 width = share 'groupBoxWidth',
+                title = LOC "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverSettings=Server settings",
+                f:row {
+                    f:checkbox {
+                        value = bind 'useLocalServer',
+                        title = LOC "$$$/lrc-ai-assistant/PluginInfoDialogSections/useLocalServer=Use external server",
+                    },
+                },
+                f:row {
+                    f:static_text {
+                        title = LOC "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverBaseUrl=Server base URL",
+                        width = share 'labelWidth'
+                    },
+                    f:edit_field {
+                        value = bind 'serverBaseUrl',
+                        width = share 'inputWidth',
+                        width_in_chars = 30,
+                        enabled = bind 'useLocalServer',
+                    },
+                },
+            },
+            f:group_box {
+                width = share 'groupBoxWidth',
                 f:checkbox {
                     value = bind 'useClip',
                     title = "Use OpenCLIP AI model for advanced search",
@@ -321,6 +346,7 @@ end
 
 
 function PluginInfoDialogSections.endDialog(propertyTable)
+    local wasUsingLocalServer = prefs.useLocalServer
     prefs.geminiApiKey = propertyTable.geminiApiKey
     prefs.chatgptApiKey = propertyTable.chatgptApiKey
     prefs.generateCaption = propertyTable.generateCaption
@@ -358,6 +384,17 @@ function PluginInfoDialogSections.endDialog(propertyTable)
     prefs.prompts = propertyTable.prompts
 
     prefs.ollamaBaseUrl = propertyTable.ollamaBaseUrl
+
+    if propertyTable.useLocalServer and not wasUsingLocalServer then
+        SearchIndexAPI.shutdownServer()
+    end
+
+    prefs.useLocalServer = propertyTable.useLocalServer
+    prefs.serverBaseUrl = propertyTable.serverBaseUrl
+
+    if wasUsingLocalServer and not propertyTable.useLocalServer then
+        SearchIndexAPI.startServer()
+    end
 
     prefs.licenseKey = propertyTable.licenseKey
     
