@@ -1,4 +1,18 @@
 
+local function safeSchemaLog(message)
+    local ok, err = pcall(function()
+        local LrFileUtils = import 'LrFileUtils'
+        local LrPathUtils = import 'LrPathUtils'
+        local LrDate = import 'LrDate'
+        local logPath = LrPathUtils.child(LrPathUtils.getStandardFilePath('temp'), "LrGeniusAI-schema.log")
+        local line = string.format("%s %s\n", LrDate.timeToUserFormat(LrDate.currentTime()), message or "")
+        LrFileUtils.appendToFile(logPath, line)
+    end)
+    return ok, err
+end
+
+safeSchemaLog("MetadataProvider loaded")
+
 return {
     metadataFieldsForPhotos = {
         {
@@ -37,17 +51,13 @@ return {
 
     schemaVersion = 23,
     updateFromEarlierSchemaVersion = function (catalog, previousSchemaVersion, progressScope)
-            catalog:assertHasPrivateWriteAccess("AIMetadataProvider.updateFromEarlierSchemaVersion")
-            if previousSchemaVersion ~= nil and previousSchemaVersion < 23 then
-                -- Migration from LrGeniusTagAI
-                if LrDialogs.confirm(
-                    LOC "$$$/lrc-ai-assistant/MetadataProvider/MigrationDetected=Migration from LrGeniusTagAI detected.",
-                    LOC "$$$/lrc-ai-assistant/MetadataProvider/MigrationMessage=It is recommended to run 'Import Metadata from Catalog' from the LrGeniusAI menu to import AI-generated keywords into the new database of LrGeniusAI.",
-                    LOC "$$$/lrc-ai-assistant/MetadataProvider/MigrationRunNow=Run now",
-                    LOC "$$$/lrc-ai-assistant/MetadataProvider/MigrationSkip=Skip (Can be run later manually)"
-                ) == "ok" then
-                    require "TaskImportMetadata"
-                end
-            end
-        end,
+        safeSchemaLog("updateFromEarlierSchemaVersion: " .. tostring(previousSchemaVersion))
+        catalog:assertHasPrivateWriteAccess("AIMetadataProvider.updateFromEarlierSchemaVersion")
+        if previousSchemaVersion ~= nil and previousSchemaVersion < 23 then
+            -- Migration from LrGeniusTagAI (defer UI and work until Init.lua).
+            local LrPrefs = import 'LrPrefs'
+            local prefs = LrPrefs.prefsForPlugin()
+            prefs.pendingImportMetadata = true
+        end
+    end,
 }

@@ -221,6 +221,20 @@ if _G.prefs.useClip == nil then
     _G.prefs.useClip = false
 end
 
+if _G.prefs.pendingImportMetadata then
+    _G.prefs.pendingImportMetadata = false
+    LrTasks.startAsyncTask(function()
+        if LrDialogs.confirm(
+            LOC "$$$/lrc-ai-assistant/MetadataProvider/MigrationDetected=Migration from LrGeniusTagAI detected.",
+            LOC "$$$/lrc-ai-assistant/MetadataProvider/MigrationMessage=It is recommended to run 'Import Metadata from Catalog' from the LrGeniusAI menu to import AI-generated keywords into the new database of LrGeniusAI.",
+            LOC "$$$/lrc-ai-assistant/MetadataProvider/MigrationRunNow=Run now",
+            LOC "$$$/lrc-ai-assistant/MetadataProvider/MigrationSkip=Skip (Can be run later manually)"
+        ) == "ok" then
+            require "TaskImportMetadata"
+        end
+    end)
+end
+
 function _G.JSON.assert(b, m)
     LrDialogs.showError("Error decoding JSON response.")
 end
