@@ -1,0 +1,37 @@
+Plug-in error log for plug-in at: /Users/baptiste/workspace/LrGeniusAI/LrGeniusAI.lrdevplugin
+
+**** Error 1
+
+Une erreur s'est produite lors de la tentative d'exécution d'un script du module externe.
+Malformed ZString (missing trailing quote): ""$$$/LrGeniusAI/ServerStats/windowTitle=Statut du serveur d'index de recherche"
+
+**** Error 2
+
+Une erreur s'est produite lors de la tentative de démarrage du module externe.
+Malformed ZString (missing trailing quote): ""$$$/LrGeniusAI/ServerStats/windowTitle=Statut du serveur d'index de recherche"
+
+**** Error 3
+
+Impossible de lire la description du fournisseur des métadonnées du module externe.
+Malformed ZString (missing trailing quote): ""$$$/LrGeniusAI/ServerStats/windowTitle=Statut du serveur d'index de recherche"
+
+**** Error 4
+
+Impossible de lire les spécifications de métadonnées de ce module externe.
+Malformed ZString (missing trailing quote): ""$$$/LrGeniusAI/ServerStats/windowTitle=Statut du serveur d'index de recherche"
+
+**** Error 5
+
+Impossible d'ouvrir la boîte de dialogue du module externe.
+PluginInfoDialogSections.lua:5: attempt to index global 'prefs' (a nil value)
+
+**** Error 6
+
+Impossible de fermer la boîte de dialogue du module externe.
+PluginInfoDialogSections.lua:368: attempt to index global 'prefs' (a nil value)
+
+**** Error 7
+
+Impossible d'ouvrir la boîte de dialogue du module externe.
+PluginInfoDialogSections.lua:5: attempt to index global 'prefs' (a nil value)
+

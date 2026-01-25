@@ -1,4 +1,3 @@
-
 local function safeSchemaLog(message)
     local ok, err = pcall(function()
         local LrFileUtils = import 'LrFileUtils'
@@ -50,11 +49,11 @@ return {
     },
 
     schemaVersion = 23,
+
     updateFromEarlierSchemaVersion = function (catalog, previousSchemaVersion, progressScope)
         safeSchemaLog("updateFromEarlierSchemaVersion: " .. tostring(previousSchemaVersion))
         catalog:assertHasPrivateWriteAccess("AIMetadataProvider.updateFromEarlierSchemaVersion")
         if previousSchemaVersion ~= nil and previousSchemaVersion < 23 then
-            -- Migration from LrGeniusTagAI (defer UI and work until Init.lua).
             local LrPrefs = import 'LrPrefs'
             local prefs = LrPrefs.prefsForPlugin()
             prefs.pendingImportMetadata = true
