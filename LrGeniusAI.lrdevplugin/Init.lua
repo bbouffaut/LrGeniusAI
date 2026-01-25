@@ -232,8 +232,14 @@ if prefs.periodicalUpdateCheck then
     end)
 end
 
+require "APISearchIndex"
+
 LrTasks.startAsyncTask(function()
+    log:info("Plugin activation: useLocalServer=" .. tostring(prefs.useLocalServer)
+        .. " serverBaseUrl=" .. tostring(prefs.serverBaseUrl)
+        .. " serverDbPath=" .. tostring(prefs.serverDbPath))
     if not prefs.useLocalServer then
+        log:info("Plugin activation: starting local search index server")
         SearchIndexAPI.startServer()
     end
     if prefs.enableOpenClip then
@@ -247,5 +253,4 @@ require "KeywordConfigProvider"
 require "PromptConfigProvider"
 require "UpdateCheck"
 require "ErrorHandler"
-require "APISearchIndex"
 require "PhotoSelector"

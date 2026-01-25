@@ -71,13 +71,6 @@ function PluginInfoDialogSections.startDialog(propertyTable)
     propertyTable:addObserver('useLocalServer', function(properties, key, newValue)
         properties.serverDbPathEnabled = not newValue
         prefs.useLocalServer = newValue
-        if SearchIndexAPI and SearchIndexAPI.shutdownServer and SearchIndexAPI.startServer then
-            if newValue then
-                SearchIndexAPI.shutdownServer()
-            else
-                SearchIndexAPI.startServer()
-            end
-        end
     end)
 
     propertyTable.ollamaBaseUrl = prefs.ollamaBaseUrl
@@ -418,10 +411,6 @@ function PluginInfoDialogSections.endDialog(propertyTable)
     prefs.useLocalServer = propertyTable.useLocalServer
     prefs.serverBaseUrl = propertyTable.serverBaseUrl
     prefs.serverDbPath = propertyTable.serverDbPath
-
-    if wasUsingLocalServer and not propertyTable.useLocalServer then
-        SearchIndexAPI.startServer()
-    end
 
     prefs.licenseKey = propertyTable.licenseKey
     

@@ -708,12 +708,12 @@ end
 
 function SearchIndexAPI.startServer()
     if prefs.useLocalServer then
-        log:trace("Using external search index server at " .. baseUrl())
+        log:info("Local server start skipped; using external search index server at " .. baseUrl())
         return true
     end
 
     if SearchIndexAPI.pingServer() then
-        log:trace("Search index server is already running")
+        log:info("Search index server is already running")
         return true
     end
 
@@ -730,6 +730,7 @@ function SearchIndexAPI.startServer()
 
     local defaultDbPath = LrPathUtils.child(LrPathUtils.parent(LrApplication.activeCatalog():getPath()), "lrgenius.db")
     local dbPath = Util.nilOrEmpty(prefs.serverDbPath) and defaultDbPath or prefs.serverDbPath
+    log:info("Starting local search index server with dbPath=" .. tostring(dbPath))
 
     LrTasks.startAsyncTask(function()
         local startServerCmd = nil
