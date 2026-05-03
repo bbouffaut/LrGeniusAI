@@ -54,6 +54,10 @@ if _G.prefs.chatgptApiKey == nil then
     _G.prefs.chatgptApiKey = ""
 end
 
+if _G.prefs.mistralApiKey == nil then
+    _G.prefs.mistralApiKey = ""
+end
+
 if _G.prefs.generateTitle == nil then
     _G.prefs.generateTitle = true
 end

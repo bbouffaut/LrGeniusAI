@@ -70,8 +70,9 @@ local function showAnalyzeAndIndexDialog(ctx)
     -- Server will check all providers and filter to multimodal only
     local openaiKey = (prefs and not Util.nilOrEmpty(prefs.chatgptApiKey)) and prefs.chatgptApiKey or nil
     local geminiKey = (prefs and not Util.nilOrEmpty(prefs.geminiApiKey)) and prefs.geminiApiKey or nil
+    local mistralKey = (prefs and not Util.nilOrEmpty(prefs.mistralApiKey)) and prefs.mistralApiKey or nil
     
-    local modelsResp = SearchIndexAPI.getModels(openaiKey, geminiKey)
+    local modelsResp = SearchIndexAPI.getModels(openaiKey, geminiKey, mistralKey)
     if modelsResp and modelsResp.models then
         for provider, list in pairs(modelsResp.models) do
             for _, model in ipairs(list) do
@@ -599,6 +600,13 @@ LrTasks.startAsyncTask(function()
             end
             log:trace("Added Gemini API key to options")
             options.api_key = prefs.geminiApiKey
+        elseif providerFromKey == 'mistral' and prefs then
+            if prefs.mistralApiKey == nil or prefs.mistralApiKey == '' then
+                LrDialogs.showError(LOC "$$$/LrGeniusAI/AnalyzeAndIndex/MissingMistralAPIKey=Mistral AI API key is not configured. Please set it in the plugin preferences.")
+                return
+            end
+            log:trace("Added Mistral AI API key to options")
+            options.api_key = prefs.mistralApiKey
         end
 
         if prefs.useKeywordHierarchy then

@@ -854,12 +854,14 @@ end
 -- Dynamically checks Ollama and LM Studio availability on each call.
 -- @param openaiApiKey string|nil OpenAI API key for listing ChatGPT models
 -- @param geminiApiKey string|nil Gemini API key for listing Gemini models
+-- @param mistralApiKey string|nil Mistral API key for listing Mistral models
 -- @return table|nil Response from server with format: { models = { qwen = {...}, ollama = {...}, ... } }
-function SearchIndexAPI.getModels(openaiApiKey, geminiApiKey)
+function SearchIndexAPI.getModels(openaiApiKey, geminiApiKey, mistralApiKey)
     local url = baseUrl() .. ENDPOINTS.MODELS
     local body = { 
         openai_apikey = openaiApiKey, 
-        gemini_apikey = geminiApiKey 
+        gemini_apikey = geminiApiKey,
+        mistral_apikey = mistralApiKey
     }
     local result, err = _request('POST', url, body)
     if err then

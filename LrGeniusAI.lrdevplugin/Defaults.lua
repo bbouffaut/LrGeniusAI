@@ -6,6 +6,7 @@ Defaults.defaultTopLevelKeywords = {
     "LM Studio",
     "ChatGPT",
     "Google Gemini",
+    "Mistral AI",
 }
 
 Defaults.topLevelKeywordSynonym = "LrGeniusAI Top-Level Keyword"
