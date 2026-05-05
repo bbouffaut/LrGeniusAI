@@ -250,10 +250,11 @@ local function buildUrlWithParams(baseUrl, params)
     end
 end
 
-function SearchIndexAPI.searchIndex(searchTerm, qualitySort, photosToSearch)
+function SearchIndexAPI.searchIndex(searchTerm, qualitySort, photosToSearch, temperature)
     local params = {
         term = searchTerm,
         quality_sort = qualitySort,
+        temperature = temperature,
     }
 
     local url = baseUrl() .. ENDPOINTS.SEARCH
@@ -267,7 +268,8 @@ function SearchIndexAPI.searchIndex(searchTerm, qualitySort, photosToSearch)
 
         local body = {
             term = searchTerm,
-            uuids = uuids
+            uuids = uuids,
+            temperature = temperature,
         }
         local postUrl = buildUrlWithParams(url, params)
 

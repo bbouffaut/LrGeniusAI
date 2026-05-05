@@ -9,6 +9,7 @@ local function showAdvancedSearchDialog(ctx)
     props.useQualityFilter = false
     props.qualitySort = 'prettiest'
     props.searchScope = 'all' -- 'view', 'selection', 'all'
+    props.searchTemperature = prefs.searchTemperature or prefs.temperature or Defaults.defaultTemperature
 
     local f = LrView.osFactory()
     local bind = LrView.bind
@@ -63,6 +64,20 @@ local function showAdvancedSearchDialog(ctx)
                     },
                 },
             },
+            f:row {
+                f:static_text { title = LOC "$$$/LrGeniusAI/AdvancedSearchTask/Temperature=Temperature:", width = share 'labelWidth', alignment = 'right' },
+                f:slider {
+                    value = bind('searchTemperature'),
+                    min = 0.0,
+                    max = 1.0,
+                    integral = false,
+                    width = 300,
+                },
+                f:static_text {
+                    title = bind('searchTemperature'),
+                    width = 40,
+                },
+            },
         }
     }
 
@@ -109,11 +124,12 @@ LrTasks.startAsyncTask(function()
         end -- 'all' means photosToSearch is nil, so we search everything
 
         local qualitySort = props.useQualityFilter and props.qualitySort or nil
+        prefs.searchTemperature = props.searchTemperature
 
         -- Semantic search (with optional quality filter)
         if props.searchTerm ~= "" then
             log:trace("Performing semantic search for: " .. props.searchTerm)
-            results = SearchIndexAPI.searchIndex(props.searchTerm, qualitySort, photosToSearch)
+            results = SearchIndexAPI.searchIndex(props.searchTerm, qualitySort, photosToSearch, props.searchTemperature)
             collectionName = string.format("'%s' @ %s", props.searchTerm, LrDate.timeToW3CDate(LrDate.currentTime()))
 
         -- Quality-only search
