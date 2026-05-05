@@ -58,6 +58,10 @@ if _G.prefs.mistralApiKey == nil then
     _G.prefs.mistralApiKey = ""
 end
 
+if _G.prefs.anthropicApiKey == nil then
+    _G.prefs.anthropicApiKey = ""
+end
+
 if _G.prefs.generateTitle == nil then
     _G.prefs.generateTitle = true
 end
@@ -219,6 +223,9 @@ if _G.prefs.topLevelKeyword == nil then
 end
 if _G.prefs.knownTopLevelKeywords == nil then
     _G.prefs.knownTopLevelKeywords = Defaults.defaultTopLevelKeywords
+end
+if not Util.table_contains(_G.prefs.knownTopLevelKeywords, "Anthropic") then
+    table.insert(_G.prefs.knownTopLevelKeywords, "Anthropic")
 end
 
 if _G.prefs.useClip == nil then

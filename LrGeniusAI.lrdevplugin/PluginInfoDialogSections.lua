@@ -19,6 +19,7 @@ function PluginInfoDialogSections.startDialog(propertyTable)
     propertyTable.geminiApiKey = prefs.geminiApiKey
     propertyTable.chatgptApiKey = prefs.chatgptApiKey
     propertyTable.mistralApiKey = prefs.mistralApiKey
+    propertyTable.anthropicApiKey = prefs.anthropicApiKey
     propertyTable.generateTitle = prefs.generateTitle
     propertyTable.generateCaption = prefs.generateCaption
     propertyTable.generateKeywords = prefs.generateKeywords
@@ -248,6 +249,25 @@ function PluginInfoDialogSections.sectionsForTopOfDialog(f, propertyTable)
                         width = share 'apiButtonWidth',
                     },
                 },
+                f:row {
+                    f:static_text {
+                        title = LOC "$$$/lrc-ai-assistant/PluginInfoDialogSections/AnthropicApiKey=Anthropic API key",
+                        -- alignment = 'right',
+                        width = share 'labelWidth'
+                    },
+                    f:edit_field {
+                        value = bind 'anthropicApiKey',
+                        width = share 'inputWidth',
+                        width_in_chars = 30,
+                    },
+                    f:push_button {
+                        title = LOC "$$$/lrc-ai-assistant/PluginInfoDialogSections/GetAPIkey=Get API key",
+                        action = function(button)
+                            LrHttp.openUrlInBrowser("https://console.anthropic.com/settings/keys")
+                        end,
+                        width = share 'apiButtonWidth',
+                    },
+                },
             },
             f:group_box {
                 width = share 'groupBoxWidth',
@@ -389,6 +409,7 @@ function PluginInfoDialogSections.endDialog(propertyTable)
     prefs.geminiApiKey = propertyTable.geminiApiKey
     prefs.chatgptApiKey = propertyTable.chatgptApiKey
     prefs.mistralApiKey = propertyTable.mistralApiKey
+    prefs.anthropicApiKey = propertyTable.anthropicApiKey
     prefs.generateCaption = propertyTable.generateCaption
     prefs.generateTitle = propertyTable.generateTitle
     prefs.generateKeywords = propertyTable.generateKeywords

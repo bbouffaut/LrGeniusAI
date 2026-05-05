@@ -108,7 +108,7 @@ function MetadataManager.addKeywordRecursively(photo, keywordSubTable, parent)
         elseif type(key) == 'number' and value and value ~= "" and value ~= "None" and value ~= "none" then
             local currentParent = prefs.useKeywordHierarchy and parent or nil
             if not Util.table_contains(addKeywords, value) then
-                if value == "Ollama" or value == "LMStudio" or value == "Google Gemini" or value == "ChatGPT" or value == "Mistral AI" or value == prefs.topLevelKeyword then
+                if value == "Ollama" or value == "LMStudio" or value == "Google Gemini" or value == "ChatGPT" or value == "Mistral AI" or value == "Anthropic" or value == prefs.topLevelKeyword then
                     log:trace("Skipping keyword: " .. tostring(value) .. " as it is reserved.")
                 else
                     keyword = photo.catalog:createKeyword(value, {}, true, currentParent, true)

@@ -71,8 +71,9 @@ local function showAnalyzeAndIndexDialog(ctx)
     local openaiKey = (prefs and not Util.nilOrEmpty(prefs.chatgptApiKey)) and prefs.chatgptApiKey or nil
     local geminiKey = (prefs and not Util.nilOrEmpty(prefs.geminiApiKey)) and prefs.geminiApiKey or nil
     local mistralKey = (prefs and not Util.nilOrEmpty(prefs.mistralApiKey)) and prefs.mistralApiKey or nil
+    local anthropicKey = (prefs and not Util.nilOrEmpty(prefs.anthropicApiKey)) and prefs.anthropicApiKey or nil
     
-    local modelsResp = SearchIndexAPI.getModels(openaiKey, geminiKey, mistralKey)
+    local modelsResp = SearchIndexAPI.getModels(openaiKey, geminiKey, mistralKey, anthropicKey)
     if modelsResp and modelsResp.models then
         for provider, list in pairs(modelsResp.models) do
             for _, model in ipairs(list) do
@@ -607,6 +608,13 @@ LrTasks.startAsyncTask(function()
             end
             log:trace("Added Mistral AI API key to options")
             options.api_key = prefs.mistralApiKey
+        elseif providerFromKey == 'anthropic' and prefs then
+            if prefs.anthropicApiKey == nil or prefs.anthropicApiKey == '' then
+                LrDialogs.showError(LOC "$$$/LrGeniusAI/AnalyzeAndIndex/MissingAnthropicAPIKey=Anthropic API key is not configured. Please set it in the plugin preferences.")
+                return
+            end
+            log:trace("Added Anthropic API key to options")
+            options.api_key = prefs.anthropicApiKey
         end
 
         if prefs.useKeywordHierarchy then

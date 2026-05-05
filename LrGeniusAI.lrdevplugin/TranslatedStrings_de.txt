@@ -42,6 +42,7 @@
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/GoogleApiKey=Google API Schlüssel"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/ChatGPTApiKey=ChatGPT API Schlüssel"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/MistralApiKey=Mistral AI API Schlüssel"
+"$$$/lrc-ai-assistant/PluginInfoDialogSections/AnthropicApiKey=Anthropic API Schlüssel"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/Logging=Logs aktivieren"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/aiModel=Zu verwendendes KI Modell"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/alttext=Alt Text"
@@ -345,3 +346,4 @@
 "$$$/LrGeniusAI/AnalyzeAndIndex/MissingChatGPTAPIKey=ChatGPT API-Schlüssel ist nicht konfiguriert. Bitte legen Sie ihn in den Plugin-Einstellungen fest."
 "$$$/LrGeniusAI/AnalyzeAndIndex/MissingGeminiAPIKey=Gemini API-Schlüssel ist nicht konfiguriert. Bitte legen Sie ihn in den Plugin-Einstellungen fest."
 "$$$/LrGeniusAI/AnalyzeAndIndex/MissingMistralAPIKey=Mistral AI API-Schlüssel ist nicht konfiguriert. Bitte legen Sie ihn in den Plugin-Einstellungen fest."
+"$$$/LrGeniusAI/AnalyzeAndIndex/MissingAnthropicAPIKey=Anthropic API-Schlüssel ist nicht konfiguriert. Bitte legen Sie ihn in den Plugin-Einstellungen fest."

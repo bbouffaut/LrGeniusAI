@@ -855,13 +855,15 @@ end
 -- @param openaiApiKey string|nil OpenAI API key for listing ChatGPT models
 -- @param geminiApiKey string|nil Gemini API key for listing Gemini models
 -- @param mistralApiKey string|nil Mistral API key for listing Mistral models
+-- @param anthropicApiKey string|nil Anthropic API key for listing Anthropic models
 -- @return table|nil Response from server with format: { models = { qwen = {...}, ollama = {...}, ... } }
-function SearchIndexAPI.getModels(openaiApiKey, geminiApiKey, mistralApiKey)
+function SearchIndexAPI.getModels(openaiApiKey, geminiApiKey, mistralApiKey, anthropicApiKey)
     local url = baseUrl() .. ENDPOINTS.MODELS
     local body = { 
         openai_apikey = openaiApiKey, 
         gemini_apikey = geminiApiKey,
-        mistral_apikey = mistralApiKey
+        mistral_apikey = mistralApiKey,
+        anthropic_apikey = anthropicApiKey
     }
     local result, err = _request('POST', url, body)
     if err then
