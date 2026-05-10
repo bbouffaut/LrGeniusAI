@@ -617,7 +617,10 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
                 uuid = photo:getRawMetadata("uuid"),
                 caption = photo:getFormattedMetadata("caption"),
                 title = photo:getFormattedMetadata("title"),
-                keywords = MetadataManager.getPhotoKeywordHierarchy(photo),
+                keywords = MetadataManager.removeTopLevelKeyword(
+                    MetadataManager.getPhotoKeywordHierarchy(photo),
+                    prefs.topLevelKeyword
+                ),
                 alt_text = photo:getFormattedMetadata("altTextAccessibility")
             }
             table.insert(metadataBatch, metadata)

@@ -3,6 +3,262 @@
 
 MetadataManager = {}
 
+local function isBlank(value)
+    return value == nil or Util.trim(tostring(value)) == ""
+end
+
+local function mergeText(catalogValue, backendValue, separator)
+    local catalogText = Util.trim(tostring(catalogValue or ""))
+    local backendText = Util.trim(tostring(backendValue or ""))
+
+    if catalogText == "" then return backendText end
+    if backendText == "" or catalogText == backendText then return catalogText end
+    return catalogText .. separator .. backendText
+end
+
+local function keywordTableToDisplayString(keywordTable)
+    if keywordTable == nil or type(keywordTable) ~= "table" then
+        return ""
+    end
+
+    local values = {}
+    local seen = {}
+
+    local function recurse(tbl, path)
+        for key, value in pairs(tbl) do
+            if type(value) == "table" then
+                local nextPath = Util.deepcopy(path)
+                if type(key) ~= "number" then
+                    table.insert(nextPath, tostring(key))
+                end
+                recurse(value, nextPath)
+            elseif type(value) == "string" and value ~= "" then
+                local keywordPath = Util.deepcopy(path)
+                table.insert(keywordPath, value)
+                local displayValue = table.concat(keywordPath, " > ")
+                if not seen[displayValue] then
+                    table.insert(values, displayValue)
+                    seen[displayValue] = true
+                end
+            end
+        end
+    end
+
+    recurse(keywordTable, {})
+    table.sort(values)
+    return table.concat(values, "\n")
+end
+
+function MetadataManager.removeTopLevelKeyword(keywordHierarchy, topLevelKeyword)
+    if keywordHierarchy == nil or type(keywordHierarchy) ~= "table" then
+        return {}
+    end
+    if isBlank(topLevelKeyword) then
+        return keywordHierarchy
+    end
+
+    local topLevelName = Util.trim(tostring(topLevelKeyword))
+    local cleaned = {}
+
+    local function addArrayValue(target, value)
+        for _, existingValue in ipairs(target) do
+            if existingValue == value then
+                return
+            end
+        end
+        table.insert(target, value)
+    end
+
+    local function mergeInto(target, source)
+        for key, value in pairs(source) do
+            if type(key) == "number" then
+                addArrayValue(target, value)
+            elseif type(value) == "table" then
+                if target[key] == nil or type(target[key]) ~= "table" then
+                    target[key] = {}
+                end
+                mergeInto(target[key], value)
+            else
+                target[key] = value
+            end
+        end
+    end
+
+    for key, value in pairs(keywordHierarchy) do
+        if type(key) == "number" then
+            if type(value) ~= "string" or Util.trim(value) ~= topLevelName then
+                addArrayValue(cleaned, value)
+            end
+        elseif tostring(key) == topLevelName then
+            if type(value) == "table" then
+                mergeInto(cleaned, value)
+            end
+        elseif type(value) == "table" then
+            if cleaned[key] == nil or type(cleaned[key]) ~= "table" then
+                cleaned[key] = {}
+            end
+            mergeInto(cleaned[key], value)
+        else
+            cleaned[key] = value
+        end
+    end
+
+    return cleaned
+end
+
+function MetadataManager.getCatalogMetadata(photo)
+    return {
+        title = photo:getFormattedMetadata("title") or "",
+        caption = photo:getFormattedMetadata("caption") or "",
+        alt_text = photo:getFormattedMetadata("altTextAccessibility") or "",
+        keywords = MetadataManager.getPhotoKeywordHierarchy(photo),
+    }
+end
+
+function MetadataManager.hasCatalogMetadataConflict(photo, response, options)
+    options = options or {}
+    if response == nil or response.metadata == nil then
+        return false
+    end
+
+    local catalogMetadata = MetadataManager.getCatalogMetadata(photo)
+    local backendMetadata = response.metadata
+
+    if options.applyTitle ~= false
+        and not isBlank(catalogMetadata.title)
+        and not isBlank(backendMetadata.title)
+        and Util.trim(catalogMetadata.title) ~= Util.trim(tostring(backendMetadata.title)) then
+        return true
+    end
+
+    if options.applyCaption ~= false
+        and not isBlank(catalogMetadata.caption)
+        and not isBlank(backendMetadata.caption)
+        and Util.trim(catalogMetadata.caption) ~= Util.trim(tostring(backendMetadata.caption)) then
+        return true
+    end
+
+    if options.applyAltText ~= false
+        and not isBlank(catalogMetadata.alt_text)
+        and not isBlank(backendMetadata.alt_text)
+        and Util.trim(catalogMetadata.alt_text) ~= Util.trim(tostring(backendMetadata.alt_text)) then
+        return true
+    end
+
+    local catalogKeywords = keywordTableToDisplayString(catalogMetadata.keywords)
+    local backendKeywords = keywordTableToDisplayString(backendMetadata.keywords)
+    if options.applyKeywords ~= false
+        and not isBlank(catalogKeywords)
+        and not isBlank(backendKeywords)
+        and catalogKeywords ~= backendKeywords then
+        return true
+    end
+
+    return false
+end
+
+function MetadataManager.showCatalogMetadataConflictDialog(ctx, photo, response, options)
+    options = options or {}
+    local f = LrView.osFactory()
+    local bind = LrView.bind
+    local share = LrView.share
+
+    local catalogMetadata = MetadataManager.getCatalogMetadata(photo)
+    local backendMetadata = response.metadata or {}
+
+    local properties = LrBinding.makePropertyTable(ctx)
+    properties.catalogTitle = catalogMetadata.title or ""
+    properties.backendTitle = backendMetadata.title or ""
+    properties.catalogCaption = catalogMetadata.caption or ""
+    properties.backendCaption = backendMetadata.caption or ""
+    properties.catalogAltText = catalogMetadata.alt_text or ""
+    properties.backendAltText = backendMetadata.alt_text or ""
+    properties.catalogKeywords = keywordTableToDisplayString(catalogMetadata.keywords)
+    properties.backendKeywords = keywordTableToDisplayString(backendMetadata.keywords)
+
+    local function valueRows(prefix)
+        return f:column {
+            spacing = f:control_spacing(),
+            f:row {
+                f:static_text { title = LOC "$$$/LrGeniusAI/RetrieveMetadata/Conflict/Title=Title", width = share 'labelWidth' },
+                f:edit_field { value = bind(prefix .. 'Title'), width_in_chars = 42, height_in_lines = 1, enabled = false },
+            },
+            f:row {
+                f:static_text { title = LOC "$$$/LrGeniusAI/RetrieveMetadata/Conflict/Caption=Caption", width = share 'labelWidth' },
+                f:edit_field { value = bind(prefix .. 'Caption'), width_in_chars = 42, height_in_lines = 6, enabled = false },
+            },
+            f:row {
+                f:static_text { title = LOC "$$$/LrGeniusAI/RetrieveMetadata/Conflict/AltText=Alt Text", width = share 'labelWidth' },
+                f:edit_field { value = bind(prefix .. 'AltText'), width_in_chars = 42, height_in_lines = 4, enabled = false },
+            },
+            f:row {
+                f:static_text { title = LOC "$$$/LrGeniusAI/RetrieveMetadata/Conflict/Keywords=Keywords", width = share 'labelWidth' },
+                f:edit_field { value = bind(prefix .. 'Keywords'), width_in_chars = 42, height_in_lines = 8, enabled = false },
+            },
+        }
+    end
+
+    local dialogView = f:column {
+        bind_to_object = properties,
+        spacing = f:control_spacing(),
+        f:row {
+            f:static_text {
+                title = photo:getFormattedMetadata('fileName'),
+                font = "<system/bold>",
+            },
+        },
+        f:row {
+            spacing = f:control_spacing(),
+            f:group_box {
+                title = LOC "$$$/LrGeniusAI/RetrieveMetadata/Conflict/CatalogValues=Values in catalog",
+                valueRows('catalog'),
+            },
+            f:group_box {
+                title = LOC "$$$/LrGeniusAI/RetrieveMetadata/Conflict/BackendValues=Values from backend",
+                valueRows('backend'),
+            },
+        },
+    }
+
+    local result = LrDialogs.presentModalDialog({
+        title = LOC "$$$/LrGeniusAI/RetrieveMetadata/Conflict/WindowTitle=Metadata already exists",
+        contents = dialogView,
+        actionVerb = LOC "$$$/LrGeniusAI/RetrieveMetadata/Conflict/TakeBackend=Take backend",
+        otherVerb = LOC "$$$/LrGeniusAI/RetrieveMetadata/Conflict/Merge=Merge",
+        cancelVerb = LOC "$$$/LrGeniusAI/RetrieveMetadata/Conflict/KeepCatalog=Keep catalog",
+        resizable = true,
+    })
+
+    if result == "ok" then
+        return "backend"
+    elseif result == "other" then
+        return "merge"
+    end
+
+    return "catalog"
+end
+
+function MetadataManager.mergeCatalogAndBackendMetadata(photo, response, options)
+    options = options or {}
+    local mergedResponse = Util.deepcopy(response)
+    mergedResponse.metadata = mergedResponse.metadata or {}
+
+    local catalogMetadata = MetadataManager.getCatalogMetadata(photo)
+    local backendMetadata = response.metadata or {}
+
+    if options.applyTitle ~= false then
+        mergedResponse.metadata.title = mergeText(catalogMetadata.title, backendMetadata.title, " / ")
+    end
+    if options.applyCaption ~= false then
+        mergedResponse.metadata.caption = mergeText(catalogMetadata.caption, backendMetadata.caption, "\n\n")
+    end
+    if options.applyAltText ~= false then
+        mergedResponse.metadata.alt_text = mergeText(catalogMetadata.alt_text, backendMetadata.alt_text, "\n\n")
+    end
+
+    return mergedResponse
+end
+
 ---
 -- Applies the AI-generated metadata to the photo.
 -- @param photo The LrPhoto object.
@@ -11,6 +267,7 @@ MetadataManager = {}
 -- @param ai (AiModelAPI instance) The AI model API instance.
 --
 function MetadataManager.applyMetadata(photo, response, validatedData, options)
+    options = options or {}
     log:trace("Applying metadata to photo: " .. photo:getFormattedMetadata('fileName'))
     local catalog = LrApplication.activeCatalog()
 
@@ -19,10 +276,10 @@ function MetadataManager.applyMetadata(photo, response, validatedData, options)
     local altText = response.metadata.alt_text
     local keywords = response.metadata.keywords
 
-    local saveTitle = true
-    local saveCaption = true
-    local saveAltText = true
-    local saveKeywords = true
+    local saveTitle = options.applyTitle ~= false
+    local saveCaption = options.applyCaption ~= false
+    local saveAltText = options.applyAltText ~= false
+    local saveKeywords = options.applyKeywords ~= false
 
     -- If review was done, use the validated data
     if validatedData then
@@ -41,20 +298,34 @@ function MetadataManager.applyMetadata(photo, response, validatedData, options)
 
     log:trace("Saving title, caption, altText, keywords to catalog")
     catalog:withWriteAccessDo(LOC "$$$/lrc-ai-assistant/AnalyzeImageTask/saveTitleCaption=Save AI generated title and caption", function()
-        if saveCaption and caption and caption ~= "" then
+        if saveCaption and caption ~= nil and (options.replaceExistingMetadata or caption ~= "") then
             photo:setRawMetadata('caption', caption)
         end
-        if saveTitle and title and title ~= "" then
+        if saveTitle and title ~= nil and (options.replaceExistingMetadata or title ~= "") then
             photo:setRawMetadata('title', title)
         end
-        if saveAltText and altText and altText ~= "" then
+        if saveAltText and altText ~= nil and (options.replaceExistingMetadata or altText ~= "") then
             photo:setRawMetadata('altTextAccessibility', altText)
         end
     end, Defaults.catalogWriteAccessOptions)
 
     -- Save keywords
     log:trace("Saving keywords to catalog")
-    if saveKeywords and keywords ~= nil and type(keywords) == 'table' and prefs.generateKeywords then
+    if saveKeywords and keywords ~= nil and type(keywords) == 'table' then
+        if options.replaceExistingKeywords and not isBlank(keywordTableToDisplayString(keywords)) then
+            catalog:withWriteAccessDo("$$$/lrc-ai-assistant/AnalyzeImageTask/replaceKeywords=Replace catalog keywords", function()
+                local existingKeywords = photo:getRawMetadata('keywords') or {}
+                for _, keyword in ipairs(existingKeywords) do
+                    local removed, err = pcall(function()
+                        photo:removeKeyword(keyword)
+                    end)
+                    if not removed then
+                        log:error("Failed to remove keyword while replacing catalog keywords: " .. tostring(err))
+                    end
+                end
+            end, Defaults.catalogWriteAccessOptions)
+        end
+
         local topKeyword = nil
         if prefs.useKeywordHierarchy and options.useTopLevelKeyword then
             catalog:withWriteAccessDo("$$$/lrc-ai-assistant/AnalyzeImageTask/saveTopKeyword=Save AI generated keywords", function()

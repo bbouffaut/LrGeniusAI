@@ -246,19 +246,39 @@ LrTasks.startAsyncTask(function()
                 log:trace("Retrieved data: " .. Util.dumpTable(retrievedData))
                 
                 if retrievedData and retrievedData.status == "success" then
-                    -- Validate if requested and not skipped
                     local shouldApply = true
                     local validatedData = nil
-                    local result = nil
-                    if options.enableValidation and not skipValidation then
-                        result, validatedData = MetadataManager.showValidationDialog(ctx, photo, retrievedData, options)
+                    local reviewResult = nil
+                    local conflictChoice = nil
+                    local dataToApply = retrievedData
+                    local applyOptions = Util.deepcopy(options)
+
+                    if MetadataManager.hasCatalogMetadataConflict(photo, retrievedData, options) then
+                        conflictChoice = MetadataManager.showCatalogMetadataConflictDialog(ctx, photo, retrievedData, options)
+
+                        if conflictChoice == "catalog" then
+                            skipCount = skipCount + 1
+                            shouldApply = false
+                            log:trace("Keeping catalog metadata for photo: " .. fileName)
+                        elseif conflictChoice == "merge" then
+                            dataToApply = MetadataManager.mergeCatalogAndBackendMetadata(photo, retrievedData, options)
+                            log:trace("Merging catalog and backend metadata for photo: " .. fileName)
+                        elseif conflictChoice == "backend" then
+                            applyOptions.replaceExistingMetadata = true
+                            applyOptions.replaceExistingKeywords = true
+                            log:trace("Taking backend metadata for photo: " .. fileName)
+                        end
+                    end
+
+                    -- Validate if requested and not skipped
+                    if shouldApply and options.enableValidation and not skipValidation then
+                        reviewResult, validatedData = MetadataManager.showValidationDialog(ctx, photo, dataToApply, applyOptions)
                         
-                        if result == "ok" then
-                            successCount = successCount + 1
+                        if reviewResult == "ok" then
                             if validatedData ~= nil and validatedData.skipFromHere then
                                 skipValidation = true
                             end
-                        elseif result == "other" then
+                        elseif reviewResult == "other" then
                             skipCount = skipCount + 1
                             shouldApply = false
                             validatedData = nil
@@ -270,12 +290,12 @@ LrTasks.startAsyncTask(function()
 
                     -- Apply metadata
                     if shouldApply then
-                        MetadataManager.applyMetadata(photo, retrievedData, validatedData, options)
+                        MetadataManager.applyMetadata(photo, dataToApply, validatedData, applyOptions)
                         successCount = successCount + 1
                         log:trace("Metadata applied successfully for photo: " .. fileName)
                         
                         -- Overwrite with validated data if any
-                        if result ~= nil and result == "ok" then
+                        if reviewResult == "ok" then
                             SearchIndexAPI.importMetadataFromCatalog({ photo }, progressScope)
                         end
                     end
