@@ -269,7 +269,6 @@
 "$$$/LrGeniusAI/AnalyzeAndIndex/MetadataOptions=Metadata Options"
 "$$$/LrGeniusAI/AnalyzeAndIndex/AISettings=AI Settings"
 "$$$/LrGeniusAI/AnalyzeAndIndex/ContextOptions=Context Options"
-"$$$/LrGeniusAI/AnalyzeAndIndex/Temperature=Temperature:"
 "$$$/LrGeniusAI/AnalyzeAndIndex/RegenerateMetadata=Regenerate all data (overwrite existing)"
 "$$$/LrGeniusAI/AnalyzeAndIndex/SaveDataToCatalog=Save generated data to catalog"
 "$$$/LrGeniusAI/AnalyzeAndIndex/NoTasksSelected=Please select at least one task to perform."
@@ -333,8 +332,6 @@
 "$$$/LrGeniusAI/PromptConfig/DeletePromptConfirm=Do you really want to delete the prompt"
 "$$$/LrGeniusAI/PromptConfig/Add=Add"
 "$$$/LrGeniusAI/PromptConfig/Delete=Delete"
-"$$$/LrGeniusAI/PromptConfig/Temperature=Temperature"
-
 -- UI Elements
 "$$$/LrGeniusAI/UI/Prompts=Prompts"
 "$$$/LrGeniusAI/UI/PromptsSemanticSearch=Semantic photo search"

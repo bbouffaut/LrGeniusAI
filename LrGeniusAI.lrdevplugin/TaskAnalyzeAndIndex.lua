@@ -25,8 +25,6 @@ local function showAnalyzeAndIndexDialog(ctx)
     props.enableQuality = false 
     props.regenerateMetadata = prefs.regenerateMetadata or false
     
-    -- Metadata generation options
-    props.temperature = prefs.temperature or 0.1
     props.promptTitles = {}
     for title, prompt in pairs(prefs.prompts) do
         table.insert(props.promptTitles, { title = title, value = title })
@@ -57,7 +55,6 @@ local function showAnalyzeAndIndexDialog(ctx)
     -- AI Model selection (unified across providers)
     props.modelKey = prefs.modelKey -- format: "provider::model"
     props.language = prefs.generateLanguage or "English"
-    props.temperature = prefs.temperature or 0.1
     props.replaceSS = prefs.replaceSS or false
 
     -- Build model list from server (local providers first)
@@ -147,23 +144,6 @@ local function showAnalyzeAndIndexDialog(ctx)
                     value = bind 'modelKey',
                     items = modelItems,
                     width = 300,
-                },
-            },
-            f:row {
-                f:static_text {
-                    title = LOC "$$$/LrGeniusAI/AnalyzeAndIndex/Temperature=Temperature:",
-                    width = share 'labelWidth',
-                },
-                f:slider {
-                    value = bind 'temperature',
-                    min = 0.0,
-                    max = 0.5,
-                    integral = false,
-                    width = 300,
-                },
-                f:static_text {
-                    title = bind 'temperature',
-                    width = 40,
                 },
             },
             f:row {
@@ -418,7 +398,6 @@ local function showAnalyzeAndIndexDialog(ctx)
             end
         end
         prefs.generateLanguage = props.language
-        prefs.temperature = props.temperature
         prefs.submitGPS = props.submitGPS
         prefs.submitKeywords = props.submitKeywords
         prefs.submitFolderName = props.submitFolderName
@@ -566,7 +545,6 @@ LrTasks.startAsyncTask(function()
             provider = providerFromKey,
             model = modelFromKey,
             language = props.language,
-            temperature = props.temperature,
             generate_keywords = props.generateKeywords,
             generate_caption = props.generateCaption,
             generate_title = props.generateTitle,

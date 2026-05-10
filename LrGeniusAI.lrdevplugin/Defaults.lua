@@ -16,8 +16,6 @@ Defaults.defaultGenerateLanguage = "English"
 
 Defaults.generateLanguages = { "English", "German", "French", "Spanish", "Italian" }
 
-Defaults.defaultTemperature = 0.1
-
 Defaults.defaultKeywordCategories = {
     LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Activities=Activities",
     LOC "$$$/lrc-ai-assistant/Defaults/ResponseStructure/keywords/Buildings=Buildings",

@@ -138,7 +138,6 @@ end
 --   - tasks table: Array of tasks to perform (default: {"embeddings", "metadata", "quality"})
 --   - provider string: AI provider to use (default: "qwen")
 --   - language string: Language for generated content (default: "English")
---   - temperature number: Temperature for AI generation (default: 0.2)
 --   - generate_keywords boolean: Generate keywords (default: true)
 --   - generate_caption boolean: Generate caption (default: true)
 --   - generate_title boolean: Generate title (default: true)
@@ -184,7 +183,6 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
         model = options.model,
         api_key = options.api_key,
         language = options.language or prefs.generateLanguage or "English",
-        temperature = options.temperature or prefs.temperature or 0.2,
         replace_ss = options.replace_ss or false,
         
         -- Metadata generation options
@@ -258,11 +256,10 @@ local function buildUrlWithParams(baseUrl, params)
     end
 end
 
-function SearchIndexAPI.searchIndex(searchTerm, qualitySort, photosToSearch, temperature)
+function SearchIndexAPI.searchIndex(searchTerm, qualitySort, photosToSearch)
     local params = {
         term = searchTerm,
         quality_sort = qualitySort,
-        temperature = temperature,
     }
 
     local url, urlErr = endpointUrl(ENDPOINTS.SEARCH)
@@ -281,7 +278,6 @@ function SearchIndexAPI.searchIndex(searchTerm, qualitySort, photosToSearch, tem
         local body = {
             term = searchTerm,
             uuids = uuids,
-            temperature = temperature,
         }
         local postUrl = buildUrlWithParams(url, params)
 
@@ -414,7 +410,7 @@ end
 -- Uses JPEG export instead of thumbnails for better reliability.
 -- @param selectedPhotos table Array of LrPhoto objects to process.
 -- @param progressScope LrProgressScope Progress scope for UI updates.
--- @param options table Processing options (tasks, provider, language, temperature, etc.).
+-- @param options table Processing options (tasks, provider, language, etc.).
 -- @return string status Status: "success", "canceled", "somefailed", or "allfailed".
 -- @return number processed Number of photos processed.
 -- @return number failed Number of photos that failed.

@@ -270,7 +270,6 @@
 "$$$/LrGeniusAI/AnalyzeAndIndex/MetadataOptions=Metadaten-Optionen"
 "$$$/LrGeniusAI/AnalyzeAndIndex/AISettings=KI-Einstellungen"
 "$$$/LrGeniusAI/AnalyzeAndIndex/ContextOptions=Kontext-Optionen"
-"$$$/LrGeniusAI/AnalyzeAndIndex/Temperature=Temperatur:"
 "$$$/LrGeniusAI/AnalyzeAndIndex/RegenerateMetadata=Alle Daten neu generieren (vorhandene überschreiben)"
 "$$$/LrGeniusAI/AnalyzeAndIndex/SaveDataToCatalog=Generierte Daten im Katalog speichern"
 "$$$/LrGeniusAI/AnalyzeAndIndex/NoTasksSelected=Bitte wählen Sie mindestens eine Aufgabe aus."
@@ -291,8 +290,6 @@
 "$$$/LrGeniusAI/PromptConfig/DeletePromptConfirm=Möchten Sie den Prompt wirklich löschen"
 "$$$/LrGeniusAI/PromptConfig/Add=Hinzufügen"
 "$$$/LrGeniusAI/PromptConfig/Delete=Löschen"
-"$$$/LrGeniusAI/PromptConfig/Temperature=Temperatur"
-
 -- UI Elements
 "$$$/LrGeniusAI/UI/Prompts=Prompts"
 "$$$/LrGeniusAI/UI/PromptsSemanticSearch=Semantische Fotosuche"

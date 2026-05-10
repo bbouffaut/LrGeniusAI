@@ -142,10 +142,6 @@ if _G.prefs.submitGPS == nil then
     _G.prefs.submitGPS = true
 end
 
-if _G.prefs.temperature == nil then
-    _G.prefs.temperature = Defaults.defaultTemperature
-end
-
 if _G.prefs.useKeywordHierarchy == nil then
     _G.prefs.useKeywordHierarchy = true
 end
