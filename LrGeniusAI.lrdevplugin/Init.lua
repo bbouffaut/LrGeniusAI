@@ -166,16 +166,8 @@ if _G.prefs.ollamaBaseUrl == nil then
     _G.prefs.ollamaBaseUrl = "http://localhost:11434"
 end
 
-if _G.prefs.useLocalServer == nil then
-    _G.prefs.useLocalServer = false
-end
-
 if _G.prefs.serverBaseUrl == nil then
-    _G.prefs.serverBaseUrl = "http://127.0.0.1:19819"
-end
-
-if _G.prefs.serverDbPath == nil then
-    _G.prefs.serverDbPath = LrPathUtils.child(LrPathUtils.parent(LrApplication.activeCatalog():getPath()), "lrgenius.db")
+    _G.prefs.serverBaseUrl = ""
 end
 
 if _G.prefs.licenseKey == nil then
@@ -247,15 +239,7 @@ end
 
 require "APISearchIndex"
 
-LrTasks.startAsyncTask(function()
-    log:info("Plugin activation: useLocalServer=" .. tostring(prefs.useLocalServer)
-        .. " serverBaseUrl=" .. tostring(prefs.serverBaseUrl)
-        .. " serverDbPath=" .. tostring(prefs.serverDbPath))
-    if not prefs.useLocalServer then
-        log:info("Plugin activation: starting local search index server")
-        SearchIndexAPI.startServer()
-    end
-end)
+log:info("Plugin activation: serverBaseUrl=" .. tostring(prefs.serverBaseUrl))
 
 
 require "MetadataManager"

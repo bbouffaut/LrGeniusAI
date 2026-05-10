@@ -59,6 +59,4 @@ return {
 			file = "TaskImportMetadata.lua",
 		},
 	},
-
-	LrShutdownApp = "ShutdownApp.lua",
 }

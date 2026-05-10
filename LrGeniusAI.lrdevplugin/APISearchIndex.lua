@@ -1,20 +1,28 @@
--- lrgenius-server API Wrapper
--- Provides functions to interact with the Python-based search index server.
+-- LrGeniusAI server API wrapper.
+-- Provides functions to interact with the configured remote search index server.
 
 SearchIndexAPI = {}
 
 local function baseUrl()
-    local url
-    if prefs.useLocalServer then
-        url = prefs.serverBaseUrl or "http://127.0.0.1:19819"
-    else
-        url = "http://127.0.0.1:19819"
+    local url = prefs.serverBaseUrl
+    if Util.nilOrEmpty(url) then
+        return nil
     end
+    url = Util.trim(url)
     if url:sub(-1) == "/" then
         url = url:sub(1, -2)
     end
     return url
 end
+
+local function endpointUrl(endpoint)
+    local url = baseUrl()
+    if not url then
+        return nil, "Server base URL is not configured"
+    end
+    return url .. endpoint
+end
+
 local ENDPOINTS = {
     INDEX = "/index",
     INDEX_BY_REFERENCE = "/index_by_reference",
@@ -25,7 +33,6 @@ local ENDPOINTS = {
     GET_IDS = "/get/ids",
     REMOVE = "/remove",
     PING = "/ping",
-    SHUTDOWN = "/shutdown",
     IMPORT_METADATA = "/import/metadata",
 }
 
@@ -157,7 +164,11 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
 
     options = options or {}
     
-    local url = baseUrl() .. ENDPOINTS.INDEX_BY_REFERENCE
+    local url, urlErr = endpointUrl(ENDPOINTS.INDEX_BY_REFERENCE)
+    if not url then
+        log:error(urlErr)
+        return false, urlErr
+    end
 
     local body = {
         path = filepath,
@@ -254,7 +265,11 @@ function SearchIndexAPI.searchIndex(searchTerm, qualitySort, photosToSearch, tem
         temperature = temperature,
     }
 
-    local url = baseUrl() .. ENDPOINTS.SEARCH
+    local url, urlErr = endpointUrl(ENDPOINTS.SEARCH)
+    if not url then
+        log:error(urlErr)
+        return nil, urlErr
+    end
 
     if photosToSearch and #photosToSearch > 0 then
         -- Perform a scoped search via POST
@@ -281,11 +296,20 @@ function SearchIndexAPI.searchIndex(searchTerm, qualitySort, photosToSearch, tem
 end
 
 function SearchIndexAPI.getStats()
-    return _request('GET', baseUrl() .. ENDPOINTS.STATS)
+    local url, urlErr = endpointUrl(ENDPOINTS.STATS)
+    if not url then
+        log:error(urlErr)
+        return nil, urlErr
+    end
+    return _request('GET', url)
 end
 
 function SearchIndexAPI.getAllIndexedPhotoUUIDs(requireEmbeddings)
-    local url = baseUrl() .. ENDPOINTS.GET_IDS
+    local url, urlErr = endpointUrl(ENDPOINTS.GET_IDS)
+    if not url then
+        log:error(urlErr)
+        return nil, urlErr
+    end
     -- If requireEmbeddings is true, only get UUIDs with real embeddings
     if requireEmbeddings then
         url = url .. "?has_embedding=true"
@@ -311,7 +335,11 @@ function SearchIndexAPI.getPhotoData(uuid)
         return nil
     end
     
-    local url = baseUrl() .. "/get"
+    local url, urlErr = endpointUrl("/get")
+    if not url then
+        log:error(urlErr)
+        return nil
+    end
     local body = { uuid = uuid }
     
     log:trace("Retrieving photo data for UUID: " .. uuid)
@@ -332,7 +360,11 @@ function SearchIndexAPI.getPhotoData(uuid)
 end
 
 function SearchIndexAPI.removeUUID(uuid)
-    local url = baseUrl() .. ENDPOINTS.REMOVE
+    local url, urlErr = endpointUrl(ENDPOINTS.REMOVE)
+    if not url then
+        ErrorHandler.handleError("Remove UUID failed", urlErr)
+        return false
+    end
     local body = { uuid = uuid }
     log:trace("Removing UUID: " .. uuid)
 
@@ -566,6 +598,12 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
         return "allfailed", numPhotos, numPhotos
     end
 
+    local importUrl, urlErr = endpointUrl(ENDPOINTS.IMPORT_METADATA)
+    if not importUrl then
+        log:error("importMetadataFromCatalog failed: " .. urlErr)
+        return "allfailed", numPhotos, numPhotos
+    end
+
     progressScope:setCaption(LOC "$$$/LrGeniusAI/ImportMetadata/ProgressTitle=Importing metadata for photos...")
     progressScope:setPortionComplete(0, numPhotos)
 
@@ -589,7 +627,7 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
             table.insert(metadataBatch, metadata)
 
             if #metadataBatch >= batchSize or i == numPhotos then
-                local response = _request('POST', baseUrl() .. ENDPOINTS.IMPORT_METADATA, { metadata_items = metadataBatch })
+                local response = _request('POST', importUrl, { metadata_items = metadataBatch })
                 if response ~= nil and response.status == "processed" then
                     stats.success = stats.success + #metadataBatch
                 else
@@ -631,140 +669,16 @@ end
 
 
 function SearchIndexAPI.pingServer()
-    local url = baseUrl() .. "/ping"
+    local url = endpointUrl(ENDPOINTS.PING)
+    if not url then
+        return false
+    end
     local result, hdrs = LrHttp.get(url)
-    if hdrs.status == 200 and result == "pong" then
+    if hdrs ~= nil and hdrs.status == 200 and result == "pong" then
         return true
     else
         return false
     end
-end
-
-function SearchIndexAPI.shutdownServer()
-    if not SearchIndexAPI.pingServer() then
-        log:trace("Search index server is not running")
-        return true
-    end
-
-    local url = baseUrl() .. ENDPOINTS.SHUTDOWN
-    log:trace("Shutting down server")
-    
-    _request('POST', url)
-end
-
-function SearchIndexAPI.killServer()
-    if not SearchIndexAPI.pingServer() then
-        log:trace("Search index server is not running")
-        return true
-    end
-
-    log:trace("Attempting to shut down search index server gracefully")
-    SearchIndexAPI.shutdownServer()
-
-    local pidFilePath = LrPathUtils.child(LrPathUtils.parent(LrApplication.activeCatalog():getPath()), "lrgenius-server.pid")
-
-    local pidFile = io.open(pidFilePath, "r")
-    if not pidFile then
-        log:error("Error: Could not open PID file at " .. pidFilePath)
-        return false
-    end
-
-    local pid = pidFile:read("*l")
-    pidFile:close()
-
-    if not pid then
-        log:error("Error: Could not read PID from the file.")
-        return false
-    end
-    
-    local pid_number = tonumber(pid)
-    if not pid_number then
-        log:error("Error: The content of the PID file is not a valid number.")
-        return false
-    end
-
-    log:trace("Attempting to kill process with PID: " .. pid)
-
-    local command
-    if WIN_ENV then
-        command = "taskkill /PID " .. pid
-    elseif MAC_ENV then
-        command = "kill " .. pid
-    end
-
-    LrTasks.startAsyncTask(function()
-        local success = LrTasks.execute(command)
-
-        if success == 0 then
-            log:trace("Successfully killed the process.")
-        else
-            log:error("Error: Failed to kill the process. Command returned " .. tostring(success))
-        end
-        return success == 0
-    end)
-end
-
-
-function SearchIndexAPI.startServer()
-    if prefs.useLocalServer then
-        log:info("Local server start skipped; using external search index server at " .. baseUrl())
-        return true
-    end
-
-    if SearchIndexAPI.pingServer() then
-        log:info("Search index server is already running")
-        return true
-    end
-
-    local serverDir = LrPathUtils.child(LrPathUtils.parent(_PLUGIN.path), "lrgenius-server")
-    local serverBinary = LrPathUtils.child(serverDir, "lrgenius-server")
-    if WIN_ENV then
-        serverBinary = serverBinary .. ".exe"
-    end
-
-    if not LrFileUtils.exists(serverBinary) then
-        log:error(serverBinary .. " not found. Not trying to start server")
-        return
-    end
-
-    local defaultDbPath = LrPathUtils.child(LrPathUtils.parent(LrApplication.activeCatalog():getPath()), "lrgenius.db")
-    local dbPath = Util.nilOrEmpty(prefs.serverDbPath) and defaultDbPath or prefs.serverDbPath
-    log:info("Starting local search index server with dbPath=" .. tostring(dbPath))
-
-    LrTasks.startAsyncTask(function()
-        local startServerCmd = nil
-        
-        if WIN_ENV then
-            -- Set KMP_DUPLICATE_LIB_OK environment variable to fix OpenMP library conflict in PyInstaller builds
-            local envCmd = "set KMP_DUPLICATE_LIB_OK=TRUE &&"
-            startServerCmd = "start /b /d \"" .. serverDir .. "\" \"\" cmd /c \"" .. envCmd .. " lrgenius-server.exe"
-            startServerCmd = startServerCmd .. " --db-path \"" .. dbPath .. "\""
-            startServerCmd = startServerCmd .. "\""
-        else 
-            -- Set environment variable for Mac as well
-            local envPrefix = "KMP_DUPLICATE_LIB_OK=TRUE "
-            startServerCmd = serverBinary
-            startServerCmd = envPrefix .. "\"" .. startServerCmd .. "\" --db-path \"" .. dbPath .. "\""
-        end
-        log:trace("Trying to start search index server with command: " .. startServerCmd)
-        local result = LrTasks.execute(startServerCmd)
-        log:trace("Search index server start command result: " .. tostring(result))
-    end)
-
-    LrTasks.startAsyncTask(function()
-        LrTasks.sleep(20)
-        if SearchIndexAPI.pingServer() then
-            log:trace("Search index server is running")
-            return true
-        else
-            LrTasks.sleep(20)
-            if SearchIndexAPI.pingServer() then
-                log:trace("Search index server is running")
-                return true
-            end
-            return false
-        end
-    end)
 end
 
 _request = function(method, url, body, timeout)
@@ -857,7 +771,11 @@ end
 -- @param anthropicApiKey string|nil Anthropic API key for listing Anthropic models
 -- @return table|nil Response from server with format: { models = { qwen = {...}, ollama = {...}, ... } }
 function SearchIndexAPI.getModels(openaiApiKey, geminiApiKey, mistralApiKey, anthropicApiKey)
-    local url = baseUrl() .. ENDPOINTS.MODELS
+    local url, urlErr = endpointUrl(ENDPOINTS.MODELS)
+    if not url then
+        log:error("getModels failed: " .. urlErr)
+        return nil
+    end
     local body = { 
         openai_apikey = openaiApiKey, 
         gemini_apikey = geminiApiKey,

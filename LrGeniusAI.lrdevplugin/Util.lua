@@ -189,13 +189,6 @@ function Util.copyLogfilesToDesktop()
         log:trace("Ollama log file not found at: " .. ollamaLogfilePath)
     end
 
-    local lrgeniusServerLogfilePath = LrPathUtils.child(LrPathUtils.parent(LrApplication.activeCatalog():getPath()), "lrgenius-server.log")
-    if LrFileUtils.exists(lrgeniusServerLogfilePath) then
-        LrFileUtils.copy(lrgeniusServerLogfilePath, LrPathUtils.child(folder, 'lrgenius-server.log'))
-    else
-        log:trace("lrgenius-server log file not found at: " .. lrgeniusServerLogfilePath)
-    end
-
     if LrFileUtils.exists(filePath) then
         LrShell.revealInShell(filePath)
     else
@@ -425,6 +418,14 @@ function Util.get_keys(t)
 end
 
 function Util.waitForServerDialog()
+    if Util.nilOrEmpty(prefs.serverBaseUrl) then
+        LrDialogs.message(
+            LOC "$$$/LrGeniusAI/common/ServerUrlRequired/Title=Server URL Required",
+            LOC "$$$/LrGeniusAI/common/ServerUrlRequired/Message=Configure the remote LrGeniusAI server URL in the Plug-in Manager before running this task."
+        )
+        return false
+    end
+
     if SearchIndexAPI.pingServer() then
         return true
     end
@@ -436,7 +437,7 @@ function Util.waitForServerDialog()
 
         local progressScope = LrDialogs.showModalProgressDialog({
             title = LOC "$$$/lrc-ai-assistant/WaitForServer/title=LrGeniusAI",
-            caption = LOC "$$$/lrc-ai-assistant/WaitForServer/caption=Waiting for LrGeniusAI database to load...",
+            caption = LOC "$$$/lrc-ai-assistant/WaitForServer/caption=Waiting for the LrGeniusAI server to respond...",
             cannotCancel = false,
             functionContext = waitContext
         })
@@ -456,7 +457,7 @@ function Util.waitForServerDialog()
 
         if elapsedTime >= timeout then
             LrDialogs.message(
-                LOC "$$$/LrGeniusAI/common/ServerTimeout/Title=LrGeniusAI Database Timeout",
+                LOC "$$$/LrGeniusAI/common/ServerTimeout/Title=LrGeniusAI Server Timeout",
                 LOC "$$$/LrGeniusAI/common/ServerTimeout/Message=Timed out waiting for the LrGeniusAI server to respond. Please contact LrGeniusAI support for assistance."
             )
         end

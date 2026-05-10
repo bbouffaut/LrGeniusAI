@@ -57,17 +57,9 @@ function PluginInfoDialogSections.startDialog(propertyTable)
         properties.prompts[properties.prompt] = newValue
     end)
 
-    propertyTable:addObserver('useLocalServer', function(properties, key, newValue)
-        properties.serverDbPathEnabled = not newValue
-        prefs.useLocalServer = newValue
-    end)
-
     propertyTable.ollamaBaseUrl = prefs.ollamaBaseUrl
 
-    propertyTable.useLocalServer = prefs.useLocalServer
-    propertyTable.serverBaseUrl = prefs.serverBaseUrl
-    propertyTable.serverDbPath = prefs.serverDbPath
-    propertyTable.serverDbPathEnabled = not prefs.useLocalServer
+    propertyTable.serverBaseUrl = prefs.serverBaseUrl or ""
 
     propertyTable.licenseKey = prefs.licenseKey
 
@@ -329,33 +321,19 @@ function PluginInfoDialogSections.sectionsForTopOfDialog(f, propertyTable)
                 width = share 'groupBoxWidth',
                 title = LOC "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverSettings=Server settings",
                 f:row {
-                    f:checkbox {
-                        value = bind 'useLocalServer',
-                        title = LOC "$$$/lrc-ai-assistant/PluginInfoDialogSections/useLocalServer=Use external server",
-                    },
-                },
-                f:row {
                     f:static_text {
-                        title = LOC "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverBaseUrl=Server base URL",
+                        title = LOC "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverBaseUrl=Remote server URL",
                         width = share 'labelWidth'
                     },
                     f:edit_field {
                         value = bind 'serverBaseUrl',
                         width = share 'inputWidth',
                         width_in_chars = 30,
-                        enabled = bind 'useLocalServer',
                     },
                 },
                 f:row {
                     f:static_text {
-                        title = LOC "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverDbPath=Local server DB path",
-                        width = share 'labelWidth'
-                    },
-                    f:edit_field {
-                        value = bind 'serverDbPath',
-                        width = share 'inputWidth',
-                        width_in_chars = 30,
-                        enabled = bind 'serverDbPathEnabled',
+                        title = LOC "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverBaseUrlRequired=Required",
                     },
                 },
             },
@@ -365,7 +343,6 @@ end
 
 
 function PluginInfoDialogSections.endDialog(propertyTable)
-    local wasUsingLocalServer = prefs.useLocalServer
     prefs.geminiApiKey = propertyTable.geminiApiKey
     prefs.chatgptApiKey = propertyTable.chatgptApiKey
     prefs.mistralApiKey = propertyTable.mistralApiKey
@@ -406,13 +383,13 @@ function PluginInfoDialogSections.endDialog(propertyTable)
 
     prefs.ollamaBaseUrl = propertyTable.ollamaBaseUrl
 
-    if propertyTable.useLocalServer and not wasUsingLocalServer then
-        SearchIndexAPI.shutdownServer()
+    local remoteServerUrl = Util.trim(propertyTable.serverBaseUrl or "")
+    if Util.nilOrEmpty(remoteServerUrl) then
+        LrDialogs.showError(LOC "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverBaseUrlMissing=Remote server URL is required.")
+        prefs.serverBaseUrl = ""
+    else
+        prefs.serverBaseUrl = remoteServerUrl
     end
-
-    prefs.useLocalServer = propertyTable.useLocalServer
-    prefs.serverBaseUrl = propertyTable.serverBaseUrl
-    prefs.serverDbPath = propertyTable.serverDbPath
 
     prefs.licenseKey = propertyTable.licenseKey
     
