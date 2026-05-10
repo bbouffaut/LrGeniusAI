@@ -127,7 +127,13 @@ LrTasks.startAsyncTask(function()
         -- Semantic search (with optional quality filter)
         if props.searchTerm ~= "" then
             log:trace("Performing semantic search for: " .. props.searchTerm)
+            local searchProgressScope = LrProgressScope({
+                title = LOC "$$$/LrGeniusAI/AdvancedSearchTask/SearchProgressTitle=Searching photos...",
+                functionContext = context,
+            })
+            searchProgressScope:setCaption(LOC "$$$/LrGeniusAI/AdvancedSearchTask/SearchProgressCaption=Waiting for search results from backend...")
             results = SearchIndexAPI.searchIndex(props.searchTerm, qualitySort, photosToSearch, props.minPertinenceScore)
+            searchProgressScope:done()
             collectionName = string.format("'%s' @ %s", props.searchTerm, LrDate.timeToW3CDate(LrDate.currentTime()))
 
         -- Quality-only search
