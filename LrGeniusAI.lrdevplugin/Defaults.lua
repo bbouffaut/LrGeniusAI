@@ -95,7 +95,6 @@ Defaults.credits = {
     { name = "Flask", author = "Pallets", url = "https://flask.palletsprojects.com/" },
     { name = "Waitress", author = "Pylons Project", url = "https://github.com/Pylons/waitress" },
     { name = "ChromaDB", author = "Chroma", url = "https://www.trychroma.com/" },
-    { name = "OpenCLIP", author = "OpenAI & Contributors", url = "https://github.com/mlfoundations/open_clip" },
     { name = "PyTorch", author = "Meta & Contributors", url = "https://pytorch.org/" },
     { name = "Pillow", author = "Alex Clark & Contributors", url = "https://python-pillow.org/" },
     { name = "NumPy", author = "NumPy Developers", url = "https://numpy.org/" },

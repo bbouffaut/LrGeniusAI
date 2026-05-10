@@ -1,19 +1,6 @@
 PluginInfoDialogSections = {}
 
 function PluginInfoDialogSections.startDialog(propertyTable)
-
-    propertyTable.useClip = prefs.useClip
-
-    propertyTable.clipReady = false
-    propertyTable.keepChecksRunning = true
-    LrTasks.startAsyncTask(function (context)
-            propertyTable.clipReady = SearchIndexAPI.isClipReady()
-            while propertyTable.keepChecksRunning  do
-                LrTasks.sleep(1)
-                propertyTable.clipReady = SearchIndexAPI.isClipReady()
-            end
-        end
-    )
     propertyTable.logging = prefs.logging
     propertyTable.perfLogging = prefs.perfLogging
     propertyTable.geminiApiKey = prefs.geminiApiKey
@@ -372,33 +359,6 @@ function PluginInfoDialogSections.sectionsForTopOfDialog(f, propertyTable)
                     },
                 },
             },
-            f:group_box {
-                width = share 'groupBoxWidth',
-                f:checkbox {
-                    value = bind 'useClip',
-                    title = "Use OpenCLIP AI model for advanced search",
-                },
-                f:group_box {
-                    width = share 'groupBoxWidth',
-                    title = LOC "Advanced search",
-                    f:row {
-                        f:checkbox {
-                            value = bind 'clipReady',
-                            enabled = false,
-                            title = "OpenCLIP AI model is ready",
-                        },
-                        f:push_button {
-                            title = "Download now",
-                            action = function (button)
-                                LrTasks.startAsyncTask(function ()
-                                    SearchIndexAPI.startClipDownload()
-                                end)
-                            end,
-                            enabled = bind 'useClip',
-                        }
-                    },
-                }
-            },
         },
     }
 end
@@ -472,9 +432,5 @@ function PluginInfoDialogSections.endDialog(propertyTable)
     prefs.enableValidation = propertyTable.enableValidation
 
     prefs.useLightroomKeywords = propertyTable.useLightroomKeywords
-
-    prefs.useClip = propertyTable.useClip
-
-    propertyTable.keepChecksRunning = false
 
 end

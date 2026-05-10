@@ -189,13 +189,11 @@ function Util.copyLogfilesToDesktop()
         log:trace("Ollama log file not found at: " .. ollamaLogfilePath)
     end
 
-    if prefs.enableOpenClip then
-        local lrgeniusClipLogfilePath = LrPathUtils.child(LrPathUtils.parent(LrApplication.activeCatalog():getPath()), "lrgenius-server.log")
-        if LrFileUtils.exists(lrgeniusClipLogfilePath) then
-            LrFileUtils.copy(lrgeniusClipLogfilePath, LrPathUtils.child(folder, 'lrgenius-server.log'))
-        else
-            log:trace("lrgenius-server log file not found at: " .. lrgeniusClipLogfilePath)
-        end
+    local lrgeniusServerLogfilePath = LrPathUtils.child(LrPathUtils.parent(LrApplication.activeCatalog():getPath()), "lrgenius-server.log")
+    if LrFileUtils.exists(lrgeniusServerLogfilePath) then
+        LrFileUtils.copy(lrgeniusServerLogfilePath, LrPathUtils.child(folder, 'lrgenius-server.log'))
+    else
+        log:trace("lrgenius-server log file not found at: " .. lrgeniusServerLogfilePath)
     end
 
     if LrFileUtils.exists(filePath) then

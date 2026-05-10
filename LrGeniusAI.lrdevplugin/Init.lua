@@ -202,20 +202,12 @@ if _G.prefs.useLightroomKeywords == nil then
     _G.prefs.useLightroomKeywords = false
 end
 
-if _G.prefs.enableOpenClip == nil then
-    _G.prefs.enableOpenClip = false
-end
-
 if _G.prefs.indexingParallelTasks == nil then
     _G.prefs.indexingParallelTasks = 2
 end
 
 if _G.prefs.useGPU == nil then
     _G.prefs.useGPU = false
-end
-
-if _G.prefs.clipRateImages == nil then
-    _G.prefs.clipRateImages = true
 end
 
 if _G.prefs.topLevelKeyword == nil then
@@ -226,10 +218,6 @@ if _G.prefs.knownTopLevelKeywords == nil then
 end
 if not Util.table_contains(_G.prefs.knownTopLevelKeywords, "Anthropic") then
     table.insert(_G.prefs.knownTopLevelKeywords, "Anthropic")
-end
-
-if _G.prefs.useClip == nil then
-    _G.prefs.useClip = false
 end
 
 if _G.prefs.pendingImportMetadata then
@@ -266,9 +254,6 @@ LrTasks.startAsyncTask(function()
     if not prefs.useLocalServer then
         log:info("Plugin activation: starting local search index server")
         SearchIndexAPI.startServer()
-    end
-    if prefs.enableOpenClip then
-        SearchIndexAPI.isClipReady() -- To trigger load of the CLIP model.
     end
 end)
 
