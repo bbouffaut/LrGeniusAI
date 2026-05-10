@@ -34,7 +34,7 @@ local function showImportDialog(ctx)
     }
 
     local result = LrDialogs.presentModalDialog {
-        title = LOC "$$$/LrGeniusAI/ImportMetadata/WindowTitle=Import Metadata from Catalog",
+        title = LOC "$$$/LrGeniusAI/ImportMetadata/WindowTitle=Push metadata from Catalog to Backend...",
         contents = contents,
         actionVerb = LOC "$$$/LrGeniusAI/common/Start=Start",
         cancelVerb = LOC "$$$/LrGeniusAI/common/Cancel=Cancel",

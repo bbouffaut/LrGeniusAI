@@ -214,7 +214,7 @@ local function showAnalyzeAndIndexDialog(ctx)
             f:row {
                 f:checkbox {
                     value = bind 'enableImportBeforeIndex',
-                    title = LOC "$$$/LrGeniusAI/AnalyzeAndIndex/EnableImportBeforeIndex=Import metadata from catalog before indexing",
+                    title = LOC "$$$/LrGeniusAI/AnalyzeAndIndex/EnableImportBeforeIndex=Push metadata from Catalog to Backend... before indexing",
                 },
             },
             f:row {

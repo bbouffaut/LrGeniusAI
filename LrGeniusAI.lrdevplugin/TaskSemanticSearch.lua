@@ -6,6 +6,7 @@
 local function showAdvancedSearchDialog(ctx)
     local props = LrBinding.makePropertyTable(ctx)
     props.searchTerm = ""
+    props.minPertinenceScore = 0
     props.useQualityFilter = false
     props.qualitySort = 'prettiest'
     props.searchScope = 'all' -- 'view', 'selection', 'all'
@@ -22,6 +23,19 @@ local function showAdvancedSearchDialog(ctx)
             f:row {
                 f:static_text { title = LOC "$$$/LrGeniusAI/AdvancedSearchTask/SearchTerm=Search Term", width = share 'labelWidth', alignment = 'right' },
                 f:edit_field { value = bind('searchTerm'), width_in_chars = 40 },
+            },
+            f:row {
+                f:static_text { title = LOC "$$$/LrGeniusAI/AdvancedSearchTask/PertinenceLevel=Pertinence level:", width = share 'labelWidth', alignment = 'right' },
+                f:static_text { title = "0" },
+                f:slider {
+                    value = bind('minPertinenceScore'),
+                    min = 0,
+                    max = 1,
+                    immediate = true,
+                    width = 240,
+                },
+                f:static_text { title = "1" },
+                f:static_text { title = bind('minPertinenceScore'), width = 80 },
             },
             -- f:group_box {
             --     title = LOC "$$$/LrGeniusAI/AdvancedSearchTask/QualityFilter=Quality Filter",
@@ -113,7 +127,7 @@ LrTasks.startAsyncTask(function()
         -- Semantic search (with optional quality filter)
         if props.searchTerm ~= "" then
             log:trace("Performing semantic search for: " .. props.searchTerm)
-            results = SearchIndexAPI.searchIndex(props.searchTerm, qualitySort, photosToSearch)
+            results = SearchIndexAPI.searchIndex(props.searchTerm, qualitySort, photosToSearch, props.minPertinenceScore)
             collectionName = string.format("'%s' @ %s", props.searchTerm, LrDate.timeToW3CDate(LrDate.currentTime()))
 
         -- Quality-only search

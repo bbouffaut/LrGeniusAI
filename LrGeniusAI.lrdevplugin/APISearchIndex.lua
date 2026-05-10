@@ -256,10 +256,11 @@ local function buildUrlWithParams(baseUrl, params)
     end
 end
 
-function SearchIndexAPI.searchIndex(searchTerm, qualitySort, photosToSearch)
+function SearchIndexAPI.searchIndex(searchTerm, qualitySort, photosToSearch, minPertinenceScore)
     local params = {
         term = searchTerm,
         quality_sort = qualitySort,
+        min_pertinence_score = minPertinenceScore,
     }
 
     local url, urlErr = endpointUrl(ENDPOINTS.SEARCH)
@@ -278,6 +279,7 @@ function SearchIndexAPI.searchIndex(searchTerm, qualitySort, photosToSearch)
         local body = {
             term = searchTerm,
             uuids = uuids,
+            min_pertinence_score = minPertinenceScore,
         }
         local postUrl = buildUrlWithParams(url, params)
 

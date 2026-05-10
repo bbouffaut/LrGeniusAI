@@ -125,7 +125,7 @@
 "$$$/lrc-ai-assistant/AnalyzeImageTask/SkipReviewFromHere=Skip review for subsequent photos."
 
 "$$$/lrc-ai-assistant/MetadataProvider/MigrationDetected=Migration from LrGeniusTagAI detected."
-"$$$/lrc-ai-assistant/MetadataProvider/MigrationMessage=It is recommended to run 'Import Metadata from Catalog' from the LrGeniusAI menu to import AI-generated keywords into the new database of LrGeniusAI."
+"$$$/lrc-ai-assistant/MetadataProvider/MigrationMessage=It is recommended to run 'Push metadata from Catalog to Backend...' from the LrGeniusAI menu to import AI-generated keywords into the new database of LrGeniusAI."
 "$$$/lrc-ai-assistant/MetadataProvider/MigrationRunNow=Run now"
 "$$$/lrc-ai-assistant/MetadataProvider/MigrationSkip=Skip (Can be run later manually)"
 
@@ -264,7 +264,7 @@
 "$$$/LrGeniusAI/AnalyzeAndIndex/Tasks=Tasks to Perform"
 "$$$/LrGeniusAI/AnalyzeAndIndex/EnableEmbeddings=Create search embeddings"
 "$$$/LrGeniusAI/AnalyzeAndIndex/EnableMetadata=Generate AI metadata"
-"$$$/LrGeniusAI/AnalyzeAndIndex/EnableImportBeforeIndex=Import metadata from catalog before indexing"
+"$$$/LrGeniusAI/AnalyzeAndIndex/EnableImportBeforeIndex=Push metadata from Catalog to Backend... before indexing"
 "$$$/LrGeniusAI/AnalyzeAndIndex/EnableQuality=Analyze photo quality"
 "$$$/LrGeniusAI/AnalyzeAndIndex/MetadataOptions=Metadata Options"
 "$$$/LrGeniusAI/AnalyzeAndIndex/AISettings=AI Settings"
@@ -288,8 +288,8 @@
 "$$$/LrGeniusAI/AnalyzeAndIndex/MetadataSummary=Saved metadata for ^1 photos. Skipped ^2 photos."
 
 "$$$/LrGeniusAI/Menu/RetrieveMetadata=Retrieve Metadata from Backend..."
-"$$$/LrGeniusAI/Menu/ImportMetadata=Import Metadata from Catalog..."
-"$$$/LrGeniusAI/ImportMetadata/WindowTitle=Import Metadata from Catalog"
+"$$$/LrGeniusAI/Menu/ImportMetadata=Push metadata from Catalog to Backend......"
+"$$$/LrGeniusAI/ImportMetadata/WindowTitle=Push metadata from Catalog to Backend..."
 "$$$/LrGeniusAI/ImportMetadata/Scope=Scope"
 "$$$/LrGeniusAI/ImportMetadata/ScopeAll=All photos in catalog"
 "$$$/LrGeniusAI/ImportMetadata/ProgressTitle=Importing metadata for ^1 photos..."

@@ -213,7 +213,7 @@ if _G.prefs.pendingImportMetadata then
     LrTasks.startAsyncTask(function()
         if LrDialogs.confirm(
             LOC "$$$/lrc-ai-assistant/MetadataProvider/MigrationDetected=Migration from LrGeniusTagAI detected.",
-            LOC "$$$/lrc-ai-assistant/MetadataProvider/MigrationMessage=It is recommended to run 'Import Metadata from Catalog' from the LrGeniusAI menu to import AI-generated keywords into the new database of LrGeniusAI.",
+            LOC "$$$/lrc-ai-assistant/MetadataProvider/MigrationMessage=It is recommended to run 'Push metadata from Catalog to Backend...' from the LrGeniusAI menu to import AI-generated keywords into the new database of LrGeniusAI.",
             LOC "$$$/lrc-ai-assistant/MetadataProvider/MigrationRunNow=Run now",
             LOC "$$$/lrc-ai-assistant/MetadataProvider/MigrationSkip=Skip (Can be run later manually)"
         ) == "ok" then

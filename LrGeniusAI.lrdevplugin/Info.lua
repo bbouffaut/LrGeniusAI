@@ -36,7 +36,7 @@ return {
 			file = "TaskRetrieveMetadata.lua",
 		},
 		{
-			title = LOC "$$$/LrGeniusAI/Menu/ImportMetadata=Import Metadata from Catalog...",
+			title = LOC "$$$/LrGeniusAI/Menu/ImportMetadata=Push metadata from Catalog to Backend......",
 			file = "TaskImportMetadata.lua",
 		},
 	},
@@ -55,7 +55,7 @@ return {
 			file = "TaskRetrieveMetadata.lua",
 		},
 		{
-			title = LOC "$$$/LrGeniusAI/Menu/ImportMetadata=Import Metadata from Catalog...",
+			title = LOC "$$$/LrGeniusAI/Menu/ImportMetadata=Push metadata from Catalog to Backend......",
 			file = "TaskImportMetadata.lua",
 		},
 	},
