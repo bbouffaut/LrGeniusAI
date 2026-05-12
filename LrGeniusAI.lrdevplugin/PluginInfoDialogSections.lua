@@ -60,6 +60,7 @@ function PluginInfoDialogSections.startDialog(propertyTable)
     propertyTable.ollamaBaseUrl = prefs.ollamaBaseUrl
 
     propertyTable.serverBaseUrl = prefs.serverBaseUrl or ""
+    propertyTable.serverApiKey = prefs.serverApiKey or ""
 
     propertyTable.licenseKey = prefs.licenseKey
 
@@ -333,6 +334,17 @@ function PluginInfoDialogSections.sectionsForTopOfDialog(f, propertyTable)
                 },
                 f:row {
                     f:static_text {
+                        title = LOC "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverApiKey=Api Key",
+                        width = share 'labelWidth'
+                    },
+                    f:edit_field {
+                        value = bind 'serverApiKey',
+                        width = share 'inputWidth',
+                        width_in_chars = 30,
+                    },
+                },
+                f:row {
+                    f:static_text {
                         title = LOC "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverBaseUrlRequired=Required",
                     },
                 },
@@ -390,6 +402,8 @@ function PluginInfoDialogSections.endDialog(propertyTable)
     else
         prefs.serverBaseUrl = remoteServerUrl
     end
+
+    prefs.serverApiKey = Util.trim(propertyTable.serverApiKey or "")
 
     prefs.licenseKey = propertyTable.licenseKey
     

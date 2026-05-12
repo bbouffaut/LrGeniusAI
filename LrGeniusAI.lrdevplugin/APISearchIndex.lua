@@ -23,6 +23,20 @@ local function endpointUrl(endpoint)
     return url .. endpoint
 end
 
+local function serverRequestHeaders(extraHeaders)
+    local headers = {
+        { field = "apikey", value = tostring(prefs.serverApiKey or "") },
+    }
+
+    if extraHeaders ~= nil then
+        for _, header in ipairs(extraHeaders) do
+            table.insert(headers, header)
+        end
+    end
+
+    return headers
+end
+
 local ENDPOINTS = {
     INDEX = "/index",
     INDEX_BY_REFERENCE = "/index_by_reference",
@@ -674,7 +688,7 @@ function SearchIndexAPI.pingServer()
     if not url then
         return false
     end
-    local result, hdrs = LrHttp.get(url)
+    local result, hdrs = LrHttp.get(url, serverRequestHeaders())
     if hdrs ~= nil and hdrs.status == 200 and result == "pong" then
         return true
     else
@@ -685,15 +699,18 @@ end
 _request = function(method, url, body, timeout)
     local result, hdrs
     local bodyString = (body and type(body) == 'table') and JSON:encode(body) or nil
+    local headers = serverRequestHeaders({
+        { field = "Content-Type", value = "application/json" },
+    })
 
     if method == 'GET' then
-        result, hdrs = LrHttp.get(url, timeout)
+        result, hdrs = LrHttp.get(url, serverRequestHeaders(), timeout)
     elseif method == 'POST' then
-        result, hdrs = LrHttp.post(url, bodyString or "", { { field = "Content-Type", value = "application/json" } }, 'POST', timeout)
+        result, hdrs = LrHttp.post(url, bodyString or "", headers, 'POST', timeout)
     elseif method == 'PUT' then
-        result, hdrs = LrHttp.post(url, bodyString or "", { { field = "Content-Type", value = "application/json" } }, 'PUT', timeout)
+        result, hdrs = LrHttp.post(url, bodyString or "", headers, 'PUT', timeout)
     elseif method == 'DELETE' then
-        result, hdrs = LrHttp.post(url, bodyString or "", { { field = "Content-Type", value = "application/json" } }, 'DELETE', timeout)
+        result, hdrs = LrHttp.post(url, bodyString or "", headers, 'DELETE', timeout)
     else
         local err = "Unsupported HTTP method: " .. method
         log:error(err)

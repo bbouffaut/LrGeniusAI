@@ -78,6 +78,7 @@
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/OllamaBaseUrl=Ollama Basis URL"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverSettings=Server Einstellungen"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverBaseUrl=Remote-Server-URL"
+"$$$/lrc-ai-assistant/PluginInfoDialogSections/serverApiKey=API-Schlüssel"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverBaseUrlRequired=Erforderlich"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverBaseUrlMissing=Remote-Server-URL ist erforderlich."
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/useTopLevelKeyword=Verwende top-level Stichwort"

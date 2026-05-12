@@ -4,6 +4,7 @@
 "$$$/LrGeniusAI/common/ServerUrlRequired/Title=URL du serveur requise"
 "$$$/LrGeniusAI/common/ServerUrlRequired/Message=Configurez l'URL du serveur LrGeniusAI distant dans le gestionnaire de modules externes avant d'exécuter cette tâche."
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverBaseUrl=URL du serveur distant"
+"$$$/lrc-ai-assistant/PluginInfoDialogSections/serverApiKey=Clé API"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverBaseUrlRequired=Obligatoire"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/serverBaseUrlMissing=L'URL du serveur distant est obligatoire."
 "$$$/LrGeniusAI/ManageIndexTask/ProgressTitle=Gestion de l'index"

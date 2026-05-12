@@ -166,6 +166,10 @@ if _G.prefs.serverBaseUrl == nil then
     _G.prefs.serverBaseUrl = ""
 end
 
+if _G.prefs.serverApiKey == nil then
+    _G.prefs.serverApiKey = ""
+end
+
 if _G.prefs.licenseKey == nil then
     _G.prefs.licenseKey = ""
 end
