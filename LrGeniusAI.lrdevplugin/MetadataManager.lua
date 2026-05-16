@@ -49,6 +49,14 @@ local function keywordTableToDisplayString(keywordTable)
     return table.concat(values, "\n")
 end
 
+local function getResponseMetadata(response)
+    if type(response) ~= "table" or type(response.metadata) ~= "table" then
+        return {}
+    end
+
+    return response.metadata
+end
+
 function MetadataManager.removeTopLevelKeyword(keywordHierarchy, topLevelKeyword)
     if keywordHierarchy == nil or type(keywordHierarchy) ~= "table" then
         return {}
@@ -117,12 +125,12 @@ end
 
 function MetadataManager.hasCatalogMetadataConflict(photo, response, options)
     options = options or {}
-    if response == nil or response.metadata == nil then
+    if response == nil or type(response.metadata) ~= "table" then
         return false
     end
 
     local catalogMetadata = MetadataManager.getCatalogMetadata(photo)
-    local backendMetadata = response.metadata
+    local backendMetadata = getResponseMetadata(response)
 
     if options.applyTitle ~= false
         and not isBlank(catalogMetadata.title)
@@ -164,7 +172,7 @@ function MetadataManager.showCatalogMetadataConflictDialog(ctx, photo, response,
     local share = LrView.share
 
     local catalogMetadata = MetadataManager.getCatalogMetadata(photo)
-    local backendMetadata = response.metadata or {}
+    local backendMetadata = getResponseMetadata(response)
 
     local properties = LrBinding.makePropertyTable(ctx)
     properties.catalogTitle = catalogMetadata.title or ""
@@ -240,11 +248,11 @@ end
 
 function MetadataManager.mergeCatalogAndBackendMetadata(photo, response, options)
     options = options or {}
-    local mergedResponse = Util.deepcopy(response)
+    local mergedResponse = Util.deepcopy(response or {})
     mergedResponse.metadata = mergedResponse.metadata or {}
 
     local catalogMetadata = MetadataManager.getCatalogMetadata(photo)
-    local backendMetadata = response.metadata or {}
+    local backendMetadata = getResponseMetadata(response)
 
     if options.applyTitle ~= false then
         mergedResponse.metadata.title = mergeText(catalogMetadata.title, backendMetadata.title, " / ")
@@ -271,10 +279,12 @@ function MetadataManager.applyMetadata(photo, response, validatedData, options)
     log:trace("Applying metadata to photo: " .. photo:getFormattedMetadata('fileName'))
     local catalog = LrApplication.activeCatalog()
 
-    local title = response.metadata.title
-    local caption = response.metadata.caption
-    local altText = response.metadata.alt_text
-    local keywords = response.metadata.keywords
+    response = response or {}
+    local metadata = getResponseMetadata(response)
+    local title = metadata.title
+    local caption = metadata.caption
+    local altText = metadata.alt_text
+    local keywords = metadata.keywords
 
     local saveTitle = options.applyTitle ~= false
     local saveCaption = options.applyCaption ~= false
@@ -398,14 +408,16 @@ end
 
 
 function MetadataManager.showValidationDialog(ctx, photo, response, options)
+    options = options or {}
     local f = LrView.osFactory()
     local bind = LrView.bind
     local share = LrView.share
 
-    local title = response.metadata.title
-    local caption = response.metadata.caption
-    local altText = response.metadata.alt_text
-    local keywords = response.metadata.keywords
+    local metadata = getResponseMetadata(response)
+    local title = metadata.title
+    local caption = metadata.caption
+    local altText = metadata.alt_text
+    local keywords = metadata.keywords
 
     local propertyTable = LrBinding.makePropertyTable(ctx)
     propertyTable.skipFromHere = false

@@ -524,6 +524,41 @@ function SearchIndexAPI.getAllIndexedPhotoUUIDs(requireEmbeddings)
     return _request('GET', url)
 end
 
+local function normalizePhotoDataResponse(result, requestedUuid)
+    if type(result) ~= "table" then
+        return nil
+    end
+
+    if result.metadata ~= nil or result.quality ~= nil then
+        return result
+    end
+
+    if type(result.photos) ~= "table" then
+        return result
+    end
+
+    local selectedPhoto = nil
+    for _, photoData in ipairs(result.photos) do
+        if type(photoData) == "table" and tostring(photoData.uuid or "") == tostring(requestedUuid or "") then
+            selectedPhoto = photoData
+            break
+        end
+    end
+
+    if selectedPhoto == nil and #result.photos == 1 then
+        selectedPhoto = result.photos[1]
+    end
+
+    if type(selectedPhoto) ~= "table" then
+        return nil
+    end
+
+    local normalized = Util.deepcopy(selectedPhoto)
+    normalized.status = result.status
+    normalized.count = result.count
+    return normalized
+end
+
 ---
 -- Retrieves metadata and quality scores for a photo by UUID.
 -- @param uuid The UUID of the photo to retrieve.
@@ -535,6 +570,8 @@ end
 --     metadata = { title = "...", caption = "...", keywords = {...}, alt_text = "..." },
 --     quality = { overall_score = 0.8, composition_score = 0.9, ... }
 --   }
+-- Also accepts the backend collection envelope:
+--   { status = "success", count = 1, photos = { { uuid = "...", metadata = {...}, quality = {...} } } }
 --
 function SearchIndexAPI.getPhotoData(uuid)
     if not uuid then
@@ -558,12 +595,15 @@ function SearchIndexAPI.getPhotoData(uuid)
     end
     
     if result and result.status == "success" then
-        log:trace("Successfully retrieved photo data for UUID: " .. uuid)
-        return result
-    else
-        log:warn("Photo data not found for UUID: " .. uuid)
-        return nil
+        local normalized = normalizePhotoDataResponse(result, uuid)
+        if normalized ~= nil then
+            log:trace("Successfully retrieved photo data for UUID: " .. uuid)
+            return normalized
+        end
     end
+
+    log:warn("Photo data not found for UUID: " .. uuid)
+    return nil
 end
 
 function SearchIndexAPI.removeUUID(uuid)
