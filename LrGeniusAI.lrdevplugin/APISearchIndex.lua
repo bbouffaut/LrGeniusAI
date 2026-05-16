@@ -305,7 +305,7 @@ end
 --   - folder_names string: Folder path
 --   - user_context string: Additional context for the photo
 --   - filename string: Original photo filename
---   - photos_date string: Capture date sent to the index
+--   - photo_date string: Capture date sent to the index
 --   - ai_model string: AI model label sent to the index
 --   - exif table: Optional EXIF data sent to the index
 -- @return boolean success, table|string response - Returns success status and response data or error message
@@ -320,7 +320,7 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
 
     options = options or {}
     local filename = nonEmpty(options.filename) and options.filename or LrPathUtils.leafName(filepath)
-    local photosDate = nonEmpty(options.photos_date) and options.photos_date or (options.date_time or "")
+    local photoDateValue = nonEmpty(options.photo_date) and options.photo_date or ""
     
     local url, urlErr = endpointUrl(ENDPOINTS.INDEX)
     if not url then
@@ -339,7 +339,7 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
 
     addMimeValue(mimeChunks, "uuid", uuid)
     addMimeValue(mimeChunks, "filename", filename)
-    addMimeValue(mimeChunks, "photos_date", photosDate)
+    addMimeValue(mimeChunks, "photo_date", photoDateValue)
     addMimeValue(mimeChunks, "ai_model", aiModelValue(options))
 
     if options.provider then
@@ -402,8 +402,8 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
         table.insert(mimeChunks, { name = "prompt", value = options.prompt })
     end
 
-    if options.date_time then
-        table.insert(mimeChunks, { name = "date_time", value = options.date_time })
+    if options.submit_date_time ~= nil then
+        table.insert(mimeChunks, { name = "submit_date_time", value = tostring(options.submit_date_time) })
     end
 
     if options.exif then
@@ -718,7 +718,7 @@ function SearchIndexAPI.analyzeAndIndexSelectedPhotos(selectedPhotos, progressSc
                     end
 
                     photoOptions.filename = filename
-                    photoOptions.photos_date = photoDate(photo)
+                    photoOptions.photo_date = photoDate(photo)
                     photoOptions.ai_model = aiModelValue(photoOptions, photo)
 
                     local exif = photoExif(photo)
@@ -751,15 +751,6 @@ function SearchIndexAPI.analyzeAndIndexSelectedPhotos(selectedPhotos, progressSc
                             photoOptions.folder_names = Util.getStringsFromRelativePath(originalFilePath)
                         end
                     end
-
-
-                    if options.submit_date_time then
-                        local datetime = photo:getRawMetadata("dateTime")
-                        if datetime ~= nil and type(datetime) == "number" then
-                            photoOptions.date_time = LrDate.timeToW3CDate(datetime)
-                        end
-                    end
-
 
                     photoOptions.user_context = catalog:getPropertyForPlugin(_PLUGIN, 'photoContext') or ""
 
@@ -876,7 +867,7 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
             local metadata = {
                 uuid = safeRawMetadata(photo, "uuid") or "",
                 filename = photoFilename(photo),
-                photos_date = photoDate(photo),
+                photo_date = photoDate(photo),
                 ai_model = aiModelValue(nil, photo),
                 caption = photo:getFormattedMetadata("caption"),
                 title = photo:getFormattedMetadata("title"),
