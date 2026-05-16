@@ -37,6 +37,145 @@ local function serverRequestHeaders(extraHeaders)
     return headers
 end
 
+local function safePhotoCall(photo, callback)
+    if photo == nil then return nil end
+
+    local success, value = pcall(callback)
+    if success then
+        return value
+    end
+
+    return nil
+end
+
+local function safeRawMetadata(photo, key)
+    return safePhotoCall(photo, function()
+        return photo:getRawMetadata(key)
+    end)
+end
+
+local function safeFormattedMetadata(photo, key)
+    return safePhotoCall(photo, function()
+        return photo:getFormattedMetadata(key)
+    end)
+end
+
+local function safePluginProperty(photo, key)
+    return safePhotoCall(photo, function()
+        return photo:getPropertyForPlugin(_PLUGIN, key)
+    end)
+end
+
+local function nonEmpty(value)
+    return value ~= nil and tostring(value) ~= ""
+end
+
+local function formatPhotoDate(value)
+    if value == nil then return nil end
+    if type(value) == "number" then
+        return LrDate.timeToW3CDate(value)
+    end
+    return tostring(value)
+end
+
+local function photoFilename(photo, fallbackPath)
+    local filename = safeFormattedMetadata(photo, "fileName")
+    if nonEmpty(filename) then
+        return tostring(filename)
+    end
+
+    local path = safeRawMetadata(photo, "path")
+    if not nonEmpty(path) then
+        path = fallbackPath
+    end
+    if nonEmpty(path) then
+        return LrPathUtils.leafName(tostring(path))
+    end
+
+    return ""
+end
+
+local function photoDate(photo)
+    return formatPhotoDate(safeRawMetadata(photo, "dateTime")) or safeFormattedMetadata(photo, "dateTime") or ""
+end
+
+local function photoExif(photo)
+    local exif = {}
+    local fields = {
+        { "camera_make", "cameraMake" },
+        { "camera_model", "cameraModel" },
+        { "lens", "lens" },
+        { "iso_speed_rating", "isoSpeedRating" },
+        { "aperture", "aperture" },
+        { "shutter_speed", "shutterSpeed" },
+        { "focal_length", "focalLength" },
+        { "exposure_bias", "exposureBias" },
+        { "flash", "flash" },
+        { "metering_mode", "meteringMode" },
+        { "file_format", "fileFormat" },
+    }
+
+    for _, field in ipairs(fields) do
+        local value = safeFormattedMetadata(photo, field[2]) or safeRawMetadata(photo, field[2])
+        if nonEmpty(value) then
+            exif[field[1]] = value
+        end
+    end
+
+    if next(exif) ~= nil then
+        return exif
+    end
+
+    return nil
+end
+
+local function aiModelValue(options, photo)
+    options = options or {}
+
+    if nonEmpty(options.ai_model) then
+        return tostring(options.ai_model)
+    end
+
+    if nonEmpty(options.provider) and nonEmpty(options.model) then
+        return tostring(options.provider) .. "::" .. tostring(options.model)
+    end
+
+    if nonEmpty(options.model) then
+        return tostring(options.model)
+    end
+
+    if nonEmpty(options.provider) then
+        return tostring(options.provider)
+    end
+
+    local catalogAiModel = safePluginProperty(photo, "aiModel")
+    if nonEmpty(catalogAiModel) then
+        return tostring(catalogAiModel)
+    end
+
+    if photo == nil and nonEmpty(prefs.modelKey) then
+        return tostring(prefs.modelKey)
+    end
+
+    if photo == nil and nonEmpty(prefs.ai) then
+        return tostring(prefs.ai)
+    end
+
+    return ""
+end
+
+local function addMimeValue(mimeChunks, name, value)
+    if value == nil then
+        value = ""
+    elseif type(value) == "table" then
+        value = JSON:encode(value)
+    else
+        value = tostring(value)
+    end
+
+    table.insert(mimeChunks, { name = name, value = value })
+end
+
 local ENDPOINTS = {
     INDEX = "/index",
     INDEX_BY_REFERENCE = "/index_by_reference",
@@ -165,6 +304,10 @@ end
 --   - submit_folder_names boolean: Submit folder names (default: false)
 --   - folder_names string: Folder path
 --   - user_context string: Additional context for the photo
+--   - filename string: Original photo filename
+--   - photos_date string: Capture date sent to the index
+--   - ai_model string: AI model label sent to the index
+--   - exif table: Optional EXIF data sent to the index
 -- @return boolean success, table|string response - Returns success status and response data or error message
 ---
 
@@ -175,9 +318,9 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
         return false, "No image data provided"
     end
 
-    local filename = LrPathUtils.leafName(filepath)
-
     options = options or {}
+    local filename = nonEmpty(options.filename) and options.filename or LrPathUtils.leafName(filepath)
+    local photosDate = nonEmpty(options.photos_date) and options.photos_date or (options.date_time or "")
     
     local url, urlErr = endpointUrl(ENDPOINTS.INDEX)
     if not url then
@@ -187,13 +330,17 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
 
     local tasks = options.tasks or {"embeddings", "metadata", "quality"}
     local mimeChunks = {
-        { name = "uuid", value = uuid },
         { name = "tasks", value = JSON:encode(tasks) },
         { name = "language", value = options.language or prefs.generateLanguage or "English" },
         { name = "replace_ss", value = tostring(options.replace_ss or false) },
         { name = "regenerate_metadata", value = tostring(options.regenerate_metadata ~= false) },
         { name = "keyword_categories", value = JSON:encode(options.keyword_categories or {}) },
     }
+
+    addMimeValue(mimeChunks, "uuid", uuid)
+    addMimeValue(mimeChunks, "filename", filename)
+    addMimeValue(mimeChunks, "photos_date", photosDate)
+    addMimeValue(mimeChunks, "ai_model", aiModelValue(options))
 
     if options.provider then
         table.insert(mimeChunks, { name = "provider", value = options.provider })
@@ -257,6 +404,10 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
 
     if options.date_time then
         table.insert(mimeChunks, { name = "date_time", value = options.date_time })
+    end
+
+    if options.exif then
+        addMimeValue(mimeChunks, "exif", options.exif)
     end
 
     table.insert(mimeChunks, {
@@ -513,7 +664,7 @@ function SearchIndexAPI.analyzeAndIndexSelectedPhotos(selectedPhotos, progressSc
             if photo ~= nil then
                 
                 local uuid = photo:getRawMetadata("uuid")
-                local filename = photo:getFormattedMetadata("fileName")
+                local filename = photoFilename(photo)
                 
                 -- Export photo as JPEG
                 local exportedPhotoPath = SearchIndexAPI.exportPhotoForIndexing(photo)
@@ -524,6 +675,15 @@ function SearchIndexAPI.analyzeAndIndexSelectedPhotos(selectedPhotos, progressSc
                     local photoOptions = {}
                     for k, v in pairs(options) do
                         photoOptions[k] = v
+                    end
+
+                    photoOptions.filename = filename
+                    photoOptions.photos_date = photoDate(photo)
+                    photoOptions.ai_model = aiModelValue(photoOptions, photo)
+
+                    local exif = photoExif(photo)
+                    if exif then
+                        photoOptions.exif = exif
                     end
 
                     log:trace("Options for photo " .. filename .. ": " .. Util.dumpTable(photoOptions))
@@ -674,15 +834,25 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
             end
 
             local metadata = {
-                uuid = photo:getRawMetadata("uuid"),
+                uuid = safeRawMetadata(photo, "uuid") or "",
+                filename = photoFilename(photo),
+                photos_date = photoDate(photo),
+                ai_model = aiModelValue(nil, photo),
                 caption = photo:getFormattedMetadata("caption"),
                 title = photo:getFormattedMetadata("title"),
                 keywords = MetadataManager.removeTopLevelKeyword(
                     MetadataManager.getPhotoKeywordHierarchy(photo),
                     prefs.topLevelKeyword
                 ),
-                alt_text = photo:getFormattedMetadata("altTextAccessibility")
+                alt_text = photo:getFormattedMetadata("altTextAccessibility"),
+                ai_rundate = safePluginProperty(photo, "aiLastRun") or ""
             }
+
+            local exif = photoExif(photo)
+            if exif then
+                metadata.exif = exif
+            end
+
             table.insert(metadataBatch, metadata)
 
             if #metadataBatch >= batchSize or i == numPhotos then
