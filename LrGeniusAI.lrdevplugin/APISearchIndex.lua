@@ -73,9 +73,31 @@ end
 local function formatPhotoDate(value)
     if value == nil then return nil end
     if type(value) == "number" then
-        return LrDate.timeToW3CDate(value)
+        if value <= 0 then return nil end
+        local success, formatted = pcall(function()
+            return LrDate.timeToW3CDate(value)
+        end)
+        if success and formatted ~= nil and tostring(formatted) ~= "" then
+            return tostring(formatted)
+        end
+        return nil
     end
-    return tostring(value)
+
+    local text = tostring(value)
+    if Util and Util.trim then
+        text = Util.trim(text)
+    end
+
+    if text == "" or text == "--" or text == "---" then
+        return nil
+    end
+
+    local lowered = string.lower(text)
+    if lowered == "unknown" or lowered == "none" or lowered == "nil" then
+        return nil
+    end
+
+    return text
 end
 
 local function photoFilename(photo, fallbackPath)
@@ -95,8 +117,58 @@ local function photoFilename(photo, fallbackPath)
     return ""
 end
 
-local function photoDate(photo)
-    return formatPhotoDate(safeRawMetadata(photo, "dateTime")) or safeFormattedMetadata(photo, "dateTime") or ""
+local function photoDateFromMetadata(photo)
+    local keys = {
+        "dateTimeOriginal",
+        "dateTimeDigitized",
+        "dateCreated",
+        "captureTime",
+        "dateTime",
+    }
+
+    for _, key in ipairs(keys) do
+        local value = formatPhotoDate(safeRawMetadata(photo, key))
+        if value then
+            return value
+        end
+    end
+
+    for _, key in ipairs(keys) do
+        local value = formatPhotoDate(safeFormattedMetadata(photo, key))
+        if value then
+            return value
+        end
+    end
+
+    return nil
+end
+
+local function photoDateFromFile(path)
+    if not nonEmpty(path) then
+        return nil
+    end
+
+    local success, attributes = pcall(function()
+        return LrFileUtils.fileAttributes(path)
+    end)
+    if not success or attributes == nil then
+        return nil
+    end
+
+    return formatPhotoDate(attributes.fileCreationDate)
+        or formatPhotoDate(attributes.creationDate)
+        or formatPhotoDate(attributes.fileModificationDate)
+        or formatPhotoDate(attributes.modificationDate)
+end
+
+local function photoDate(photo, fallbackPath)
+    local metadataDate = photoDateFromMetadata(photo)
+    if metadataDate then
+        return metadataDate
+    end
+
+    local path = safeRawMetadata(photo, "path")
+    return photoDateFromFile(path) or photoDateFromFile(fallbackPath) or ""
 end
 
 local function photoExif(photo)
@@ -320,7 +392,7 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
 
     options = options or {}
     local filename = nonEmpty(options.filename) and options.filename or LrPathUtils.leafName(filepath)
-    local photoDateValue = nonEmpty(options.photo_date) and options.photo_date or ""
+    local photoDateValue = formatPhotoDate(options.photo_date) or photoDateFromFile(filepath) or ""
     
     local url, urlErr = endpointUrl(ENDPOINTS.INDEX)
     if not url then
@@ -714,7 +786,7 @@ function SearchIndexAPI.analyzeAndIndexSelectedPhotos(selectedPhotos, progressSc
                     end
 
                     photoOptions.filename = filename
-                    photoOptions.photo_date = photoDate(photo)
+                    photoOptions.photo_date = photoDate(photo, exportedPhotoPath)
                     photoOptions.ai_model = aiModelValue(photoOptions, photo)
 
                     local exif = photoExif(photo)
