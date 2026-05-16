@@ -118,22 +118,27 @@ local function photoFilename(photo, fallbackPath)
 end
 
 local function photoDateFromMetadata(photo)
-    local keys = {
+    local rawKeys = {
+        "dateTimeOriginalISO8601",
         "dateTimeOriginal",
-        "dateTimeDigitized",
-        "dateCreated",
-        "captureTime",
+        "dateTimeISO8601",
         "dateTime",
     }
 
-    for _, key in ipairs(keys) do
+    local formattedKeys = {
+        "dateTimeOriginal",
+        "dateTimeDigitized",
+        "dateTime",
+    }
+
+    for _, key in ipairs(rawKeys) do
         local value = formatPhotoDate(safeRawMetadata(photo, key))
         if value then
             return value
         end
     end
 
-    for _, key in ipairs(keys) do
+    for _, key in ipairs(formattedKeys) do
         local value = formatPhotoDate(safeFormattedMetadata(photo, key))
         if value then
             return value
@@ -143,32 +148,8 @@ local function photoDateFromMetadata(photo)
     return nil
 end
 
-local function photoDateFromFile(path)
-    if not nonEmpty(path) then
-        return nil
-    end
-
-    local success, attributes = pcall(function()
-        return LrFileUtils.fileAttributes(path)
-    end)
-    if not success or attributes == nil then
-        return nil
-    end
-
-    return formatPhotoDate(attributes.fileCreationDate)
-        or formatPhotoDate(attributes.creationDate)
-        or formatPhotoDate(attributes.fileModificationDate)
-        or formatPhotoDate(attributes.modificationDate)
-end
-
-local function photoDate(photo, fallbackPath)
-    local metadataDate = photoDateFromMetadata(photo)
-    if metadataDate then
-        return metadataDate
-    end
-
-    local path = safeRawMetadata(photo, "path")
-    return photoDateFromFile(path) or photoDateFromFile(fallbackPath) or ""
+local function photoDate(photo)
+    return photoDateFromMetadata(photo) or ""
 end
 
 local function photoExif(photo)
@@ -392,7 +373,7 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
 
     options = options or {}
     local filename = nonEmpty(options.filename) and options.filename or LrPathUtils.leafName(filepath)
-    local photoDateValue = formatPhotoDate(options.photo_date) or photoDateFromFile(filepath) or ""
+    local photoDateValue = formatPhotoDate(options.photo_date) or ""
     
     local url, urlErr = endpointUrl(ENDPOINTS.INDEX)
     if not url then
@@ -786,7 +767,7 @@ function SearchIndexAPI.analyzeAndIndexSelectedPhotos(selectedPhotos, progressSc
                     end
 
                     photoOptions.filename = filename
-                    photoOptions.photo_date = photoDate(photo, exportedPhotoPath)
+                    photoOptions.photo_date = photoDate(photo)
                     photoOptions.ai_model = aiModelValue(photoOptions, photo)
 
                     local exif = photoExif(photo)
