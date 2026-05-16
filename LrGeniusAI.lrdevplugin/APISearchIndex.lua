@@ -402,10 +402,6 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
         table.insert(mimeChunks, { name = "prompt", value = options.prompt })
     end
 
-    if options.submit_date_time ~= nil then
-        table.insert(mimeChunks, { name = "submit_date_time", value = tostring(options.submit_date_time) })
-    end
-
     if options.exif then
         addMimeValue(mimeChunks, "exif", options.exif)
     end
