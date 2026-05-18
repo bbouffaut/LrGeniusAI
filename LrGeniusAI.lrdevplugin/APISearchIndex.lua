@@ -37,7 +37,7 @@ local function serverRequestHeaders(extraHeaders)
     return headers
 end
 
-local function safePhotoCall(photo, callback)
+local function safePhotoCall(photo, callback, context)
     if photo == nil then return nil end
 
     local success, value = pcall(callback)
@@ -45,25 +45,26 @@ local function safePhotoCall(photo, callback)
         return value
     end
 
+    log:warn("Lightroom photo metadata call failed" .. (context and (" (" .. context .. ")") or "") .. ": " .. tostring(value))
     return nil
 end
 
 local function safeRawMetadata(photo, key)
     return safePhotoCall(photo, function()
         return photo:getRawMetadata(key)
-    end)
+    end, "raw:" .. tostring(key))
 end
 
 local function safeFormattedMetadata(photo, key)
     return safePhotoCall(photo, function()
         return photo:getFormattedMetadata(key)
-    end)
+    end, "formatted:" .. tostring(key))
 end
 
 local function safePluginProperty(photo, key)
     return safePhotoCall(photo, function()
         return photo:getPropertyForPlugin(_PLUGIN, key)
-    end)
+    end, "plugin:" .. tostring(key))
 end
 
 local function nonEmpty(value)
@@ -180,10 +181,53 @@ local function metadataTableValue(metadata, key)
     return nil
 end
 
-local function photoFilename(photo, fallbackPath)
+local function metadataLookupValue(metadataLookup, accessorName, key)
+    if type(metadataLookup) ~= "table" then
+        return nil
+    end
+
+    local source = metadataLookup[accessorName]
+    if type(source) ~= "table" then
+        return nil
+    end
+
+    return metadataTableValue(source, key)
+end
+
+local function dynamicFilenameFromMetadata(metadata, sourcePrefix)
+    if type(metadata) ~= "table" then
+        return nil, nil
+    end
+
+    for key, value in pairs(metadata) do
+        local normalizedKey = normalizedMetadataKey(key)
+        local looksLikeFilename =
+            normalizedKey == "filename"
+            or normalizedKey == "filenamewithoutextension"
+            or normalizedKey == "preservedfilename"
+            or (string.find(normalizedKey, "file", 1, true) ~= nil
+                and string.find(normalizedKey, "name", 1, true) ~= nil)
+
+        if looksLikeFilename then
+            local filename = textValue(value)
+            if filename then
+                return filename, sourcePrefix .. ":" .. tostring(key)
+            end
+        end
+    end
+
+    return nil, nil
+end
+
+local function photoFilename(photo, fallbackPath, metadataLookup)
     local keys = { "fileName", "filename", "preservedFileName", "com.adobe.filename" }
 
     for _, key in ipairs(keys) do
+        local filename = textValue(metadataLookupValue(metadataLookup, "formatted", key))
+        if filename then
+            return filename, "batch-formatted:" .. key
+        end
+
         local filename = textValue(safeFormattedMetadata(photo, key))
         if filename then
             return filename, "formatted:" .. key
@@ -199,10 +243,23 @@ local function photoFilename(photo, fallbackPath)
     end
 
     local rawMetadata = safeRawMetadata(photo, nil)
-    local rawPath = metadataTableValue(rawMetadata, "path") or safeRawMetadata(photo, "path")
+    local rawPath = metadataLookupValue(metadataLookup, "raw", "path")
+        or metadataTableValue(rawMetadata, "path")
+        or safeRawMetadata(photo, "path")
     local filename = leafName(rawPath)
     if filename then
         return filename, "raw:path"
+    end
+
+    local filenameSource
+    filename, filenameSource = dynamicFilenameFromMetadata(metadataLookup and metadataLookup.formatted, "batch-formatted-dynamic")
+    if filename then
+        return filename, filenameSource
+    end
+
+    filename, filenameSource = dynamicFilenameFromMetadata(metadataLookup and metadataLookup.raw, "batch-raw-dynamic")
+    if filename then
+        return filename, filenameSource
     end
 
     filename = leafName(fallbackPath)
@@ -214,6 +271,7 @@ local function photoFilename(photo, fallbackPath)
 end
 
 local CATALOG_RAW_EXIF_KEYS = {
+    "uuid",
     "path",
     "fileFormat",
     "fileSize",
@@ -234,6 +292,9 @@ local CATALOG_RAW_EXIF_KEYS = {
     "dateTimeDigitized",
     "dateTimeISO8601",
     "dateTime",
+    "rating",
+    "pickStatus",
+    "colorNameForLabel",
     "gps",
     "gpsAltitude",
     "gpsImgDirection",
@@ -262,7 +323,6 @@ local CATALOG_FORMATTED_EXIF_KEYS = {
     "lens",
     "subjectDistance",
     "dateTimeOriginal",
-    "com.adobe.dateTimeOriginal",
     "dateTimeDigitized",
     "dateTime",
     "cameraMake",
@@ -313,10 +373,13 @@ local function addCatalogMetadataValue(target, key, value)
     end
 end
 
-local function readCatalogMetadataValues(photo, accessorName, keys)
+local function readCatalogMetadataValues(photo, accessorName, keys, metadataLookup)
     local metadata = {}
     for _, key in ipairs(keys) do
-        if accessorName == "raw" then
+        local lookupValue = metadataLookupValue(metadataLookup, accessorName, key)
+        if lookupValue ~= nil then
+            addCatalogMetadataValue(metadata, key, lookupValue)
+        elseif accessorName == "raw" then
             addCatalogMetadataValue(metadata, key, safeRawMetadata(photo, key))
         else
             addCatalogMetadataValue(metadata, key, safeFormattedMetadata(photo, key))
@@ -330,7 +393,12 @@ local function readCatalogMetadataValues(photo, accessorName, keys)
     return nil
 end
 
-local function readCatalogMetadataTable(photo, accessorName)
+local function readCatalogMetadataTable(photo, accessorName, metadataLookup)
+    local lookupSource = metadataLookup and metadataLookup[accessorName]
+    if type(lookupSource) == "table" and next(lookupSource) ~= nil then
+        return jsonSafeMetadataValue(lookupSource)
+    end
+
     local metadata
     if accessorName == "raw" then
         metadata = safeRawMetadata(photo, nil)
@@ -346,7 +414,35 @@ local function readCatalogMetadataTable(photo, accessorName)
     return nil
 end
 
-local function catalogCaptureTime(photo)
+local function dynamicCaptureTimeFromMetadata(metadata, sourcePrefix)
+    if type(metadata) ~= "table" then
+        return nil, nil
+    end
+
+    for key, value in pairs(metadata) do
+        local normalizedKey = normalizedMetadataKey(key)
+        local looksLikeCaptureTime =
+            normalizedKey == "capturedate"
+            or normalizedKey == "capturetime"
+            or normalizedKey == "capturetimestamp"
+            or normalizedKey == "datetimeoriginal"
+            or normalizedKey == "datetimeoriginaliso8601"
+            or normalizedKey == "originaldatetime"
+            or (string.find(normalizedKey, "capture", 1, true) ~= nil
+                and string.find(normalizedKey, "date", 1, true) ~= nil)
+
+        if looksLikeCaptureTime then
+            local formatted = formatCaptureTime(value)
+            if formatted then
+                return formatted, sourcePrefix .. ":" .. tostring(key)
+            end
+        end
+    end
+
+    return nil, nil
+end
+
+local function catalogCaptureTime(photo, metadataLookup)
     local rawKeys = {
         "dateTimeOriginalISO8601",
         "dateTimeOriginal",
@@ -355,37 +451,141 @@ local function catalogCaptureTime(photo)
     }
 
     for _, key in ipairs(rawKeys) do
-        local value = formatCaptureTime(safeRawMetadata(photo, key))
+        local value = formatCaptureTime(metadataLookupValue(metadataLookup, "raw", key))
+            or formatCaptureTime(safeRawMetadata(photo, key))
         if value then
-            return value, "lightroom-raw:" .. key
+            return value, (metadataLookupValue(metadataLookup, "raw", key) ~= nil and "batch-lightroom-raw:" or "lightroom-raw:") .. key
         end
     end
 
     local formattedKeys = {
         "dateTimeOriginal",
-        "com.adobe.dateTimeOriginal",
         "dateTime",
         "dateCreated",
     }
 
     for _, key in ipairs(formattedKeys) do
-        local value = formatCaptureTime(safeFormattedMetadata(photo, key))
+        local value = formatCaptureTime(metadataLookupValue(metadataLookup, "formatted", key))
+            or formatCaptureTime(safeFormattedMetadata(photo, key))
         if value then
-            return value, "lightroom-formatted:" .. key
+            return value, (metadataLookupValue(metadataLookup, "formatted", key) ~= nil and "batch-lightroom-formatted:" or "lightroom-formatted:") .. key
         end
+    end
+
+    local dynamicRawValue, dynamicRawSource = dynamicCaptureTimeFromMetadata(
+        metadataLookup and metadataLookup.raw,
+        "batch-lightroom-raw-dynamic"
+    )
+    if dynamicRawValue then
+        return dynamicRawValue, dynamicRawSource
+    end
+
+    local dynamicFormattedValue, dynamicFormattedSource = dynamicCaptureTimeFromMetadata(
+        metadataLookup and metadataLookup.formatted,
+        "batch-lightroom-formatted-dynamic"
+    )
+    if dynamicFormattedValue then
+        return dynamicFormattedValue, dynamicFormattedSource
     end
 
     return "", "empty"
 end
 
-local function catalogPhotoMetadata(photo)
-    local originalFilePath = safeRawMetadata(photo, "path")
-    local filename, filenameSource = photoFilename(photo, originalFilePath)
-    local captureTimeValue, captureTimeSource = catalogCaptureTime(photo)
-    local rawExif = readCatalogMetadataValues(photo, "raw", CATALOG_RAW_EXIF_KEYS)
-    local formattedExif = readCatalogMetadataValues(photo, "formatted", CATALOG_FORMATTED_EXIF_KEYS)
-    local allRawMetadata = readCatalogMetadataTable(photo, "raw")
-    local allFormattedMetadata = readCatalogMetadataTable(photo, "formatted")
+local function batchMetadataForPhoto(batchMetadata, photo)
+    if type(batchMetadata) ~= "table" then
+        return nil
+    end
+
+    local direct = batchMetadata[photo]
+    if type(direct) == "table" then
+        return direct
+    end
+
+    local uuid = safeRawMetadata(photo, "uuid")
+    if uuid == nil then
+        return nil
+    end
+
+    for _, metadata in pairs(batchMetadata) do
+        if type(metadata) == "table" and tostring(metadata.uuid or "") == tostring(uuid) then
+            return metadata
+        end
+    end
+
+    return nil
+end
+
+local function mergeMetadataTables(primary, secondary)
+    local merged = {}
+    if type(secondary) == "table" then
+        for key, value in pairs(secondary) do
+            merged[key] = value
+        end
+    end
+    if type(primary) == "table" then
+        for key, value in pairs(primary) do
+            merged[key] = value
+        end
+    end
+
+    if next(merged) ~= nil then
+        return merged
+    end
+
+    return nil
+end
+
+local function batchGetCatalogMetadata(catalog, photos, accessorName, keys)
+    local success, metadata = pcall(function()
+        if accessorName == "raw" then
+            return catalog:batchGetRawMetadata(photos, keys)
+        end
+        return catalog:batchGetFormattedMetadata(photos, keys)
+    end)
+
+    if success and type(metadata) == "table" then
+        log:trace(
+            "LRC batch " .. accessorName .. " metadata read for " .. tostring(#photos) ..
+            " photos with " .. (keys == nil and "all keys" or "explicit keys")
+        )
+        return metadata
+    end
+
+    log:warn(
+        "LRC batch " .. accessorName .. " metadata read failed with " ..
+        (keys == nil and "all keys" or "explicit keys") .. ": " .. tostring(metadata)
+    )
+    return {}
+end
+
+local function buildCatalogMetadataLookup(photos)
+    local catalog = LrApplication.activeCatalog()
+    return {
+        rawByPhoto = batchGetCatalogMetadata(catalog, photos, "raw", CATALOG_RAW_EXIF_KEYS),
+        formattedByPhoto = batchGetCatalogMetadata(catalog, photos, "formatted", CATALOG_FORMATTED_EXIF_KEYS),
+        allRawByPhoto = batchGetCatalogMetadata(catalog, photos, "raw", nil),
+        allFormattedByPhoto = batchGetCatalogMetadata(catalog, photos, "formatted", nil),
+    }
+end
+
+local function catalogPhotoMetadata(photo, batchLookup)
+    local explicitRaw = batchMetadataForPhoto(batchLookup and batchLookup.rawByPhoto, photo)
+    local explicitFormatted = batchMetadataForPhoto(batchLookup and batchLookup.formattedByPhoto, photo)
+    local allRawMetadata = batchMetadataForPhoto(batchLookup and batchLookup.allRawByPhoto, photo)
+    local allFormattedMetadata = batchMetadataForPhoto(batchLookup and batchLookup.allFormattedByPhoto, photo)
+
+    local metadataLookup = {
+        raw = mergeMetadataTables(explicitRaw, allRawMetadata) or {},
+        formatted = mergeMetadataTables(explicitFormatted, allFormattedMetadata) or {},
+    }
+
+    local originalFilePath = metadataLookupValue(metadataLookup, "raw", "path") or safeRawMetadata(photo, "path")
+    local filename, filenameSource = photoFilename(photo, originalFilePath, metadataLookup)
+    local captureTimeValue, captureTimeSource = catalogCaptureTime(photo, metadataLookup)
+    local rawExif = readCatalogMetadataValues(photo, "raw", CATALOG_RAW_EXIF_KEYS, metadataLookup)
+    local formattedExif = readCatalogMetadataValues(photo, "formatted", CATALOG_FORMATTED_EXIF_KEYS, metadataLookup)
+    allRawMetadata = readCatalogMetadataTable(photo, "raw", metadataLookup)
+    allFormattedMetadata = readCatalogMetadataTable(photo, "formatted", metadataLookup)
 
     local exif = {
         source = "lightroom_classic_catalog",
@@ -998,6 +1198,7 @@ function SearchIndexAPI.analyzeAndIndexSelectedPhotos(selectedPhotos, progressSc
     for _, photo in ipairs(selectedPhotos) do
         table.insert(photoToProcessStack, photo)
     end
+    local catalogMetadataLookup = buildCatalogMetadataLookup(selectedPhotos)
 
     local maxWorkers = 1 -- tonumber(prefs.indexingParallelTasks) or 2
     local stats = { processed = 0, success = 0, failed = 0 }
@@ -1016,7 +1217,7 @@ function SearchIndexAPI.analyzeAndIndexSelectedPhotos(selectedPhotos, progressSc
             if photo ~= nil then
                 
                 local uuid = photo:getRawMetadata("uuid")
-                local catalogMetadata = catalogPhotoMetadata(photo)
+                local catalogMetadata = catalogPhotoMetadata(photo, catalogMetadataLookup)
                 local filename = catalogMetadata.filename
                 log:trace("LRC catalog metadata extracted before JPEG export: " .. Util.dumpTable(catalogMetadata))
 
@@ -1186,6 +1387,7 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
     local stats = { processed = 0, success = 0, failed = 0 }
     local batchSize = 50 -- Send metadata in batches
     local metadataBatch = {}
+    local catalogMetadataLookup = buildCatalogMetadataLookup(photosToProcess)
 
     for i, photo in ipairs(photosToProcess) do
         if photo ~= nil then 
@@ -1193,7 +1395,7 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
                 break
             end
 
-            local catalogMetadata = catalogPhotoMetadata(photo)
+            local catalogMetadata = catalogPhotoMetadata(photo, catalogMetadataLookup)
             local metadata = {
                 uuid = safeRawMetadata(photo, "uuid") or "",
                 filename = catalogMetadata.filename,
