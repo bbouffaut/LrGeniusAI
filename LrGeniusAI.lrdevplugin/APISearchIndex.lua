@@ -150,46 +150,6 @@ local function leafName(path)
     return nil
 end
 
-local function readTextFile(path)
-    local file = io.open(path, "r")
-    if not file then
-        return nil
-    end
-
-    local content = file:read("*all")
-    file:close()
-    return content
-end
-
-local function safeDeleteFile(path)
-    if nonEmpty(path) then
-        pcall(function()
-            LrFileUtils.delete(path)
-        end)
-    end
-end
-
-local function shellQuote(value)
-    local text = tostring(value or "")
-    if string.match(text, "^[%w%._%-%+%/%:\\]+$") then
-        return text
-    end
-
-    if MAC_ENV then
-        return "'" .. string.gsub(text, "'", "'\\''") .. "'"
-    end
-
-    return '"' .. string.gsub(text, '"', '\\"') .. '"'
-end
-
-local function executeShellCommand(command)
-    if MAC_ENV then
-        return LrTasks.execute("/bin/sh -c " .. shellQuote(command))
-    end
-
-    return LrTasks.execute(command)
-end
-
 local function normalizedMetadataKey(key)
     return string.gsub(string.lower(tostring(key or "")), "[^%w]", "")
 end
@@ -218,264 +178,6 @@ local function metadataTableValue(metadata, key)
     end
 
     return nil
-end
-
-local function exifTableValue(exif, key)
-    if type(exif) ~= "table" then
-        return nil
-    end
-
-    if exif[key] ~= nil then
-        return exif[key]
-    end
-
-    local normalizedKey = normalizedMetadataKey(key)
-    for exifKey, value in pairs(exif) do
-        if type(exifKey) == "string" then
-            local normalizedExifKey = normalizedMetadataKey(exifKey)
-            if normalizedExifKey == normalizedKey
-                or string.sub(normalizedExifKey, -string.len(normalizedKey)) == normalizedKey then
-                return value
-            end
-        end
-    end
-
-    return nil
-end
-
-local function normalizeExifCaptureTime(value)
-    local text = formatCaptureTime(value)
-    if not text then
-        return nil
-    end
-
-    local normalized = string.gsub(text, "^(%d%d%d%d):(%d%d):(%d%d)", "%1-%2-%3")
-    return normalized
-end
-
-local function captureTimeFromExif(exif)
-    local keys = {
-        "SubSecDateTimeOriginal",
-        "DateTimeOriginal",
-        "CreateDate",
-        "DateCreated",
-        "DateTimeDigitized",
-        "DateTimeCreated",
-        "OriginalDateTime",
-        "CreationDate",
-        "creation",
-        "DateTime",
-    }
-
-    for _, key in ipairs(keys) do
-        local value = normalizeExifCaptureTime(exifTableValue(exif, key))
-        if value then
-            return value, "raw-exif:" .. key
-        end
-    end
-
-    return nil, nil
-end
-
-local function filenameFromExif(exif, originalPath)
-    local filename = textValue(exifTableValue(exif, "FileName"))
-    if filename then
-        return filename, "raw-exif:FileName"
-    end
-
-    filename = leafName(exifTableValue(exif, "SourceFile"))
-    if filename then
-        return filename, "raw-exif:SourceFile"
-    end
-
-    filename = leafName(originalPath)
-    if filename then
-        return filename, "raw-path"
-    end
-
-    return nil, nil
-end
-
-local function exiftoolCandidates()
-    if MAC_ENV then
-        return {
-            "/opt/homebrew/bin/exiftool",
-            "/usr/local/bin/exiftool",
-            "/usr/bin/exiftool",
-            "exiftool",
-        }
-    end
-
-    return { "exiftool" }
-end
-
-local function sipsCandidates()
-    if MAC_ENV then
-        return { "/usr/bin/sips", "sips" }
-    end
-
-    return {}
-end
-
-local function parseSipsMetadata(output, originalPath)
-    local metadata = {}
-    for line in string.gmatch(output or "", "[^\r\n]+") do
-        local key, value = string.match(line, "^%s*([^:]+):%s*(.*)$")
-        key = textValue(key)
-        value = textValue(value)
-        if key and value then
-            metadata[key] = value
-        end
-    end
-
-    local filename = leafName(originalPath)
-    if filename then
-        metadata.FileName = filename
-    end
-    metadata.SourceFile = originalPath
-
-    if next(metadata) ~= nil then
-        return metadata
-    end
-
-    return nil
-end
-
-local function readRawFileMetadataWithSips(originalPath, outputPath, errorPath)
-    for _, executable in ipairs(sipsCandidates()) do
-        safeDeleteFile(outputPath)
-        safeDeleteFile(errorPath)
-
-        local command = table.concat({
-            shellQuote(executable),
-            "-g",
-            "all",
-            shellQuote(originalPath),
-            ">",
-            shellQuote(outputPath),
-            "2>",
-            shellQuote(errorPath),
-        }, " ")
-
-        log:trace("Reading RAW metadata with command: " .. command)
-        local exitCode = executeShellCommand(command)
-        local output = readTextFile(outputPath)
-        local errorOutput = readTextFile(errorPath)
-
-        if exitCode == 0 and nonEmpty(output) then
-            local exif = parseSipsMetadata(output, originalPath)
-            if exif then
-                local captureTimeValue, captureTimeSource = captureTimeFromExif(exif)
-                if captureTimeValue then
-                    exif.capture_time = captureTimeValue
-                    exif.capture_time_source = captureTimeSource
-                end
-                local filename, filenameSource = filenameFromExif(exif, originalPath)
-                if filename then
-                    exif.filename = filename
-                    exif.filename_source = filenameSource
-                end
-                exif.exif_source = "sips:" .. executable
-                exif.original_path = originalPath
-                return exif, "sips:" .. executable
-            end
-        else
-            log:trace(
-                "sips candidate failed: " .. tostring(executable) ..
-                ", exit_code=" .. tostring(exitCode) ..
-                ", error=" .. tostring(errorOutput)
-            )
-        end
-    end
-
-    return nil, nil
-end
-
-local function readRawFileExif(path)
-    local originalPath = textValue(path)
-    if not originalPath then
-        return nil, "missing-original-path"
-    end
-
-    if not LrFileUtils.exists(originalPath) then
-        return nil, "original-file-not-found:" .. originalPath
-    end
-
-    local tempDir = LrPathUtils.getStandardFilePath("temp")
-    local token = tostring(math.floor((LrDate.currentTime() or 0) * 1000))
-    local outputPath = LrPathUtils.child(tempDir, "LrGeniusAI-exif-" .. token .. ".json")
-    local errorPath = LrPathUtils.child(tempDir, "LrGeniusAI-exif-" .. token .. ".err")
-
-    for _, executable in ipairs(exiftoolCandidates()) do
-        safeDeleteFile(outputPath)
-        safeDeleteFile(errorPath)
-
-        local command = table.concat({
-            shellQuote(executable),
-            "-json",
-            "-a",
-            "-n",
-            "-G1",
-            "-api",
-            "largefilesupport=1",
-            shellQuote(originalPath),
-            ">",
-            shellQuote(outputPath),
-            "2>",
-            shellQuote(errorPath),
-        }, " ")
-
-        log:trace("Reading RAW EXIF with command: " .. command)
-        local exitCode = executeShellCommand(command)
-        local output = readTextFile(outputPath)
-        local errorOutput = readTextFile(errorPath)
-
-        if exitCode == 0 and nonEmpty(output) then
-            local success, decoded = pcall(function()
-                return JSON:decode(output)
-            end)
-
-            if success and type(decoded) == "table" then
-                local exif = decoded[1] or decoded
-                if type(exif) == "table" then
-                    local captureTimeValue, captureTimeSource = captureTimeFromExif(exif)
-                    if captureTimeValue then
-                        exif.capture_time = captureTimeValue
-                        exif.capture_time_source = captureTimeSource
-                    end
-                    local filename, filenameSource = filenameFromExif(exif, originalPath)
-                    if filename then
-                        exif.filename = filename
-                        exif.filename_source = filenameSource
-                    end
-                    exif.exif_source = "exiftool:" .. executable
-                    exif.original_path = originalPath
-                    safeDeleteFile(outputPath)
-                    safeDeleteFile(errorPath)
-                    return exif, "exiftool:" .. executable
-                end
-            end
-
-            log:warn("Could not decode exiftool JSON for " .. originalPath)
-        else
-            log:trace(
-                "exiftool candidate failed: " .. tostring(executable) ..
-                ", exit_code=" .. tostring(exitCode) ..
-                ", error=" .. tostring(errorOutput)
-            )
-        end
-    end
-
-    local sipsExif, sipsSource = readRawFileMetadataWithSips(originalPath, outputPath, errorPath)
-    if sipsExif then
-        safeDeleteFile(outputPath)
-        safeDeleteFile(errorPath)
-        return sipsExif, sipsSource
-    end
-
-    safeDeleteFile(outputPath)
-    safeDeleteFile(errorPath)
-    return nil, "raw-metadata-tools-unavailable-or-failed"
 end
 
 local function photoFilename(photo, fallbackPath)
@@ -511,35 +213,197 @@ local function photoFilename(photo, fallbackPath)
     return "", "empty"
 end
 
-local function rawPhotoMetadata(photo)
+local CATALOG_RAW_EXIF_KEYS = {
+    "path",
+    "fileFormat",
+    "fileSize",
+    "width",
+    "height",
+    "dimensions",
+    "croppedDimensions",
+    "shutterSpeed",
+    "aperture",
+    "exposureBias",
+    "flash",
+    "isoSpeedRating",
+    "focalLength",
+    "focalLength35mm",
+    "dateTimeOriginalISO8601",
+    "dateTimeOriginal",
+    "dateTimeDigitizedISO8601",
+    "dateTimeDigitized",
+    "dateTimeISO8601",
+    "dateTime",
+    "gps",
+    "gpsAltitude",
+    "gpsImgDirection",
+}
+
+local CATALOG_FORMATTED_EXIF_KEYS = {
+    "fileName",
+    "preservedFileName",
+    "copyName",
+    "folderName",
+    "fileSize",
+    "fileType",
+    "dimensions",
+    "croppedDimensions",
+    "exposure",
+    "shutterSpeed",
+    "aperture",
+    "brightnessValue",
+    "exposureBias",
+    "flash",
+    "exposureProgram",
+    "meteringMode",
+    "isoSpeedRating",
+    "focalLength",
+    "focalLength35mm",
+    "lens",
+    "subjectDistance",
+    "dateTimeOriginal",
+    "com.adobe.dateTimeOriginal",
+    "dateTimeDigitized",
+    "dateTime",
+    "cameraMake",
+    "cameraModel",
+    "cameraSerialNumber",
+    "artist",
+    "software",
+    "gps",
+    "gpsAltitude",
+    "gpsImgDirection",
+}
+
+local function jsonSafeMetadataValue(value)
+    if value == nil then
+        return nil
+    end
+
+    local valueType = type(value)
+    if valueType == "number" or valueType == "boolean" then
+        return value
+    end
+
+    if valueType == "string" then
+        return textValue(value)
+    end
+
+    if valueType == "table" then
+        local result = {}
+        for key, item in pairs(value) do
+            local safeValue = jsonSafeMetadataValue(item)
+            if safeValue ~= nil then
+                result[tostring(key)] = safeValue
+            end
+        end
+        if next(result) ~= nil then
+            return result
+        end
+        return nil
+    end
+
+    return textValue(tostring(value))
+end
+
+local function addCatalogMetadataValue(target, key, value)
+    local safeValue = jsonSafeMetadataValue(value)
+    if safeValue ~= nil then
+        target[key] = safeValue
+    end
+end
+
+local function readCatalogMetadataValues(photo, accessorName, keys)
+    local metadata = {}
+    for _, key in ipairs(keys) do
+        if accessorName == "raw" then
+            addCatalogMetadataValue(metadata, key, safeRawMetadata(photo, key))
+        else
+            addCatalogMetadataValue(metadata, key, safeFormattedMetadata(photo, key))
+        end
+    end
+
+    if next(metadata) ~= nil then
+        return metadata
+    end
+
+    return nil
+end
+
+local function readCatalogMetadataTable(photo, accessorName)
+    local metadata
+    if accessorName == "raw" then
+        metadata = safeRawMetadata(photo, nil)
+    else
+        metadata = safeFormattedMetadata(photo, nil)
+    end
+
+    local safeMetadata = jsonSafeMetadataValue(metadata)
+    if type(safeMetadata) == "table" and next(safeMetadata) ~= nil then
+        return safeMetadata
+    end
+
+    return nil
+end
+
+local function catalogCaptureTime(photo)
+    local rawKeys = {
+        "dateTimeOriginalISO8601",
+        "dateTimeOriginal",
+        "dateTimeISO8601",
+        "dateTime",
+    }
+
+    for _, key in ipairs(rawKeys) do
+        local value = formatCaptureTime(safeRawMetadata(photo, key))
+        if value then
+            return value, "lightroom-raw:" .. key
+        end
+    end
+
+    local formattedKeys = {
+        "dateTimeOriginal",
+        "com.adobe.dateTimeOriginal",
+        "dateTime",
+        "dateCreated",
+    }
+
+    for _, key in ipairs(formattedKeys) do
+        local value = formatCaptureTime(safeFormattedMetadata(photo, key))
+        if value then
+            return value, "lightroom-formatted:" .. key
+        end
+    end
+
+    return "", "empty"
+end
+
+local function catalogPhotoMetadata(photo)
     local originalFilePath = safeRawMetadata(photo, "path")
-    local rawExif, rawExifSource = readRawFileExif(originalFilePath)
-    local filename, filenameSource = filenameFromExif(rawExif, originalFilePath)
-    if not filename then
-        filename, filenameSource = photoFilename(photo, originalFilePath)
-    end
+    local filename, filenameSource = photoFilename(photo, originalFilePath)
+    local captureTimeValue, captureTimeSource = catalogCaptureTime(photo)
+    local rawExif = readCatalogMetadataValues(photo, "raw", CATALOG_RAW_EXIF_KEYS)
+    local formattedExif = readCatalogMetadataValues(photo, "formatted", CATALOG_FORMATTED_EXIF_KEYS)
+    local allRawMetadata = readCatalogMetadataTable(photo, "raw")
+    local allFormattedMetadata = readCatalogMetadataTable(photo, "formatted")
 
-    local captureTimeValue, captureTimeSource = captureTimeFromExif(rawExif)
-    captureTimeValue = captureTimeValue or ""
-    captureTimeSource = captureTimeSource or rawExifSource or "empty"
-
-    if rawExif then
-        if nonEmpty(captureTimeValue) then
-            rawExif.capture_time = captureTimeValue
-        end
-        if nonEmpty(filename) then
-            rawExif.filename = filename
-        end
-        rawExif.capture_time_source = captureTimeSource
-        rawExif.filename_source = filenameSource
-        rawExif.exif_read_source = rawExifSource
-        rawExif.original_path = originalFilePath
-    end
+    local exif = {
+        source = "lightroom_classic_catalog",
+        original_path = originalFilePath,
+        filename = filename,
+        filename_source = filenameSource,
+        capture_time = captureTimeValue,
+        capture_time_source = captureTimeSource,
+        raw = rawExif or {},
+        formatted = formattedExif or {},
+        all_raw = allRawMetadata or {},
+        all_formatted = allFormattedMetadata or {},
+    }
 
     return {
         original_file_path = originalFilePath,
-        exif = rawExif,
-        exif_source = rawExifSource,
+        exif = exif,
+        exif_source = "lightroom_classic_catalog",
         filename = filename or "",
         filename_source = filenameSource or "empty",
         capture_time = captureTimeValue,
@@ -761,8 +625,17 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
     end
 
     options = options or {}
-    local filename = textValue(options.filename) or leafName(filepath) or tostring(uuid or "image") .. ".jpg"
+    local filename = textValue(options.filename)
+    if not filename then
+        log:error("filename is empty before upload; expected Lightroom catalog filename")
+        return false, "filename is required"
+    end
+
     local captureTimeValue = formatCaptureTime(options.capture_time) or ""
+    if not nonEmpty(captureTimeValue) then
+        log:error("capture_time is empty before upload; expected Lightroom catalog capture time")
+        return false, "capture_time is required"
+    end
     
     local url, urlErr = endpointUrl(ENDPOINTS.INDEX)
     if not url then
@@ -783,10 +656,6 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
     addMimeValue(mimeChunks, "filename", filename)
     addMimeValue(mimeChunks, "capture_time", captureTimeValue)
     addMimeValue(mimeChunks, "ai_model", aiModelValue(options))
-
-    if not nonEmpty(captureTimeValue) then
-        log:warn("capture_time is empty for " .. tostring(filename))
-    end
 
     if options.provider then
         table.insert(mimeChunks, { name = "provider", value = options.provider })
@@ -1147,80 +1016,86 @@ function SearchIndexAPI.analyzeAndIndexSelectedPhotos(selectedPhotos, progressSc
             if photo ~= nil then
                 
                 local uuid = photo:getRawMetadata("uuid")
-                local rawMetadata = rawPhotoMetadata(photo)
-                local filename = rawMetadata.filename
-                
-                -- Export photo as JPEG
-                local exportedPhotoPath = SearchIndexAPI.exportPhotoForIndexing(photo)
-                
-                if exportedPhotoPath ~= nil then
-                    if not nonEmpty(filename) then
-                        filename, rawMetadata.filename_source = photoFilename(photo, exportedPhotoPath)
-                    end
+                local catalogMetadata = catalogPhotoMetadata(photo)
+                local filename = catalogMetadata.filename
+                log:trace("LRC catalog metadata extracted before JPEG export: " .. Util.dumpTable(catalogMetadata))
 
-                    -- Prepare analysis options with photo-specific context
-                    local photoOptions = {}
-                    for k, v in pairs(options) do
-                        photoOptions[k] = v
-                    end
-
-                    photoOptions.filename = filename
-                    photoOptions.capture_time = rawMetadata.capture_time
-                    photoOptions.ai_model = aiModelValue(photoOptions, photo)
-
-                    if rawMetadata.exif then
-                        photoOptions.exif = rawMetadata.exif
-                    end
-
-                    log:trace(
-                        "Resolved fields for photo " .. tostring(filename) ..
-                        ": original_file_path=" .. tostring(rawMetadata.original_file_path) ..
-                        ", exif_source=" .. tostring(rawMetadata.exif_source) ..
-                        ", filename_source=" .. tostring(rawMetadata.filename_source) ..
-                        ", capture_time_source=" .. tostring(rawMetadata.capture_time_source) ..
-                        ", capture_time=" .. tostring(rawMetadata.capture_time)
+                if not nonEmpty(filename) or not nonEmpty(catalogMetadata.capture_time) then
+                    stats.failed = stats.failed + 1
+                    log:error(
+                        "Missing mandatory LRC catalog metadata before JPEG export for UUID " .. tostring(uuid) ..
+                        ": filename=" .. tostring(filename) ..
+                        ", capture_time=" .. tostring(catalogMetadata.capture_time)
                     )
-                    log:trace("Options for photo " .. filename .. ": " .. Util.dumpTable(photoOptions))
-                    
-                    -- Add GPS if enabled
-                    if options.submit_gps then
-                        local gps = photo:getRawMetadata('gps')
-                        if gps then
-                            photoOptions.gps_coordinates = gps
-                        end
-                    end
-                    
-                    -- Add existing keywords if enabled
-                    if options.submit_keywords then
-                        local keywords = photo:getFormattedMetadata("keywordTagsForExport")
-                        if keywords then
-                            photoOptions.existing_keywords = keywords
-                        end
-                    end
-                    
-                    -- Add folder names if enabled
-                    if options.submit_folder_names then
-                        local originalFilePath = photo:getRawMetadata("path")
-                        if originalFilePath then
-                            photoOptions.folder_names = Util.getStringsFromRelativePath(originalFilePath)
-                        end
-                    end
+                else
+                    -- Export photo as JPEG only after mandatory LRC metadata has been extracted.
+                    local exportedPhotoPath = SearchIndexAPI.exportPhotoForIndexing(photo)
 
-                    photoOptions.user_context = catalog:getPropertyForPlugin(_PLUGIN, 'photoContext') or ""
+                    if exportedPhotoPath ~= nil then
+                        -- Prepare analysis options with photo-specific context
+                        local photoOptions = {}
+                        for k, v in pairs(options) do
+                            photoOptions[k] = v
+                        end
 
-                    -- Call unified API to index/analyze
-                    local success, indexResponse = SearchIndexAPI.analyzeAndIndexPhoto(uuid, exportedPhotoPath, photoOptions)
-                    if success then
-                        stats.success = stats.success + 1
+                        photoOptions.filename = filename
+                        photoOptions.capture_time = catalogMetadata.capture_time
+                        photoOptions.ai_model = aiModelValue(photoOptions, photo)
+
+                        if catalogMetadata.exif then
+                            photoOptions.exif = catalogMetadata.exif
+                        end
+
+                        log:trace(
+                            "Resolved fields for photo " .. tostring(filename) ..
+                            ": original_file_path=" .. tostring(catalogMetadata.original_file_path) ..
+                            ", exif_source=" .. tostring(catalogMetadata.exif_source) ..
+                            ", filename_source=" .. tostring(catalogMetadata.filename_source) ..
+                            ", capture_time_source=" .. tostring(catalogMetadata.capture_time_source) ..
+                            ", capture_time=" .. tostring(catalogMetadata.capture_time)
+                        )
+                        log:trace("Options for photo " .. filename .. ": " .. Util.dumpTable(photoOptions))
+
+                        -- Add GPS if enabled
+                        if options.submit_gps then
+                            local gps = photo:getRawMetadata('gps')
+                            if gps then
+                                photoOptions.gps_coordinates = gps
+                            end
+                        end
+
+                        -- Add existing keywords if enabled
+                        if options.submit_keywords then
+                            local keywords = photo:getFormattedMetadata("keywordTagsForExport")
+                            if keywords then
+                                photoOptions.existing_keywords = keywords
+                            end
+                        end
+
+                        -- Add folder names if enabled
+                        if options.submit_folder_names then
+                            local originalFilePath = photo:getRawMetadata("path")
+                            if originalFilePath then
+                                photoOptions.folder_names = Util.getStringsFromRelativePath(originalFilePath)
+                            end
+                        end
+
+                        photoOptions.user_context = catalog:getPropertyForPlugin(_PLUGIN, 'photoContext') or ""
+
+                        -- Call unified API to index/analyze
+                        local success, indexResponse = SearchIndexAPI.analyzeAndIndexPhoto(uuid, exportedPhotoPath, photoOptions)
+                        if success then
+                            stats.success = stats.success + 1
+                        else
+                            stats.failed = stats.failed + 1
+                            log:error("Failed to analyze/index photo: " .. filename .. " Error: " .. (indexResponse or "Unknown"))
+                        end
+                        -- Cleanup temp filename
+                        LrFileUtils.delete(exportedPhotoPath)
                     else
                         stats.failed = stats.failed + 1
-                        log:error("Failed to analyze/index photo: " .. filename .. " Error: " .. (indexResponse or "Unknown"))
+                        log:error("Failed to read exported photo: " .. filename)
                     end
-                    -- Cleanup temp filename
-                    LrFileUtils.delete(exportedPhotoPath)
-                else
-                    stats.failed = stats.failed + 1
-                    log:error("Failed to read exported photo: " .. filename)
                 end
                 
 
@@ -1318,11 +1193,11 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
                 break
             end
 
-            local rawMetadata = rawPhotoMetadata(photo)
+            local catalogMetadata = catalogPhotoMetadata(photo)
             local metadata = {
                 uuid = safeRawMetadata(photo, "uuid") or "",
-                filename = rawMetadata.filename,
-                capture_time = rawMetadata.capture_time,
+                filename = catalogMetadata.filename,
+                capture_time = catalogMetadata.capture_time,
                 ai_model = aiModelValue(nil, photo),
                 caption = photo:getFormattedMetadata("caption"),
                 title = photo:getFormattedMetadata("title"),
@@ -1334,17 +1209,17 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
                 ai_rundate = safePluginProperty(photo, "aiLastRun") or ""
             }
 
-            if rawMetadata.exif then
-                metadata.exif = rawMetadata.exif
+            if catalogMetadata.exif then
+                metadata.exif = catalogMetadata.exif
             end
 
             log:trace(
                 "Import metadata resolved fields for photo " .. tostring(metadata.filename) ..
-                ": original_file_path=" .. tostring(rawMetadata.original_file_path) ..
-                ", exif_source=" .. tostring(rawMetadata.exif_source) ..
-                ", filename_source=" .. tostring(rawMetadata.filename_source) ..
-                ", capture_time_source=" .. tostring(rawMetadata.capture_time_source) ..
-                ", capture_time=" .. tostring(rawMetadata.capture_time)
+                ": original_file_path=" .. tostring(catalogMetadata.original_file_path) ..
+                ", exif_source=" .. tostring(catalogMetadata.exif_source) ..
+                ", filename_source=" .. tostring(catalogMetadata.filename_source) ..
+                ", capture_time_source=" .. tostring(catalogMetadata.capture_time_source) ..
+                ", capture_time=" .. tostring(catalogMetadata.capture_time)
             )
 
             table.insert(metadataBatch, metadata)
