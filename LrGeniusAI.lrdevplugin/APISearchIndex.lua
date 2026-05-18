@@ -1486,25 +1486,96 @@ httpStatus = function(hdrs)
     if type(hdrs) == "number" then
         return hdrs
     end
+    if type(hdrs) == "string" then
+        return tonumber(string.match(hdrs, "(%d%d%d)"))
+    end
     if type(hdrs) == "table" then
-        return hdrs.status
+        local directStatus = tonumber(hdrs.status or hdrs.Status or hdrs.statusCode or hdrs.status_code)
+        if directStatus then
+            return directStatus
+        end
+
+        for _, header in pairs(hdrs) do
+            if type(header) == "table" then
+                local field = string.lower(tostring(header.field or header.name or ""))
+                local value = tostring(header.value or header[2] or "")
+                if field == "status" or field == ":status" or field == "http-status" then
+                    local status = tonumber(string.match(value, "(%d%d%d)"))
+                    if status then
+                        return status
+                    end
+                end
+            elseif type(header) == "string" then
+                local status = tonumber(string.match(header, "(%d%d%d)"))
+                if status then
+                    return status
+                end
+            end
+        end
     end
     return nil
+end
+
+local function hasHttpTransportError(hdrs)
+    return type(hdrs) == "table" and hdrs.error ~= nil
+end
+
+local function headersForLog(hdrs)
+    if type(hdrs) == "table" then
+        return Util.dumpTable(hdrs)
+    end
+    return tostring(hdrs or "unknown")
+end
+
+local function decodeResponseBody(result)
+    if result == nil or #result == 0 then
+        return nil
+    end
+
+    local success, decoded = pcall(function()
+        return JSON:decode(result)
+    end)
+    if success then
+        return decoded
+    end
+
+    return nil
+end
+
+local function responseBodyIsSuccess(decoded)
+    if type(decoded) ~= "table" then
+        return false
+    end
+
+    local status = tostring(decoded.status or "")
+    return status == "processed" or status == "success" or decoded.success == true
+end
+
+local function successfulHttpResponse(status, hdrs, decoded)
+    if status ~= nil then
+        return status >= 200 and status < 300
+    end
+
+    return not hasHttpTransportError(hdrs) and responseBodyIsSuccess(decoded)
 end
 
 _requestMultipart = function(url, mimeChunks, timeout)
     local result, hdrs = LrHttp.postMultipart(url, mimeChunks, serverRequestHeaders(), timeout)
     local status = httpStatus(hdrs)
+    local decoded = decodeResponseBody(result)
 
-    if status ~= nil and status >= 200 and status < 300 then
-        if result and #result > 0 then
-            return JSON:decode(result)
+    if successfulHttpResponse(status, hdrs, decoded) then
+        if decoded ~= nil then
+            if status == nil then
+                log:warn("HTTP status missing from Lightroom response headers; accepting successful response body. Headers: " .. headersForLog(hdrs))
+            end
+            return decoded
         end
         return {} -- Return an empty table for successful but empty responses
     else
-        local err_msg = "API request failed. HTTP status: " .. tostring(status or hdrs or 'unknown')
+        local err_msg = "API request failed. HTTP status: " .. tostring(status or 'unknown') .. " Headers: " .. headersForLog(hdrs)
         if result and #result > 0 then
-            local decoded_err = JSON:decode(result)
+            local decoded_err = decoded
             if decoded_err and decoded_err.error then
                 err_msg = err_msg .. " - " .. decoded_err.error
             else
@@ -1538,16 +1609,20 @@ _request = function(method, url, body, timeout)
     end
 
     local status = httpStatus(hdrs)
+    local decoded = decodeResponseBody(result)
 
-    if status ~= nil and status >= 200 and status < 300 then
-        if result and #result > 0 then
-            return JSON:decode(result)
+    if successfulHttpResponse(status, hdrs, decoded) then
+        if decoded ~= nil then
+            if status == nil then
+                log:warn("HTTP status missing from Lightroom response headers; accepting successful response body. Headers: " .. headersForLog(hdrs))
+            end
+            return decoded
         end
         return {} -- Return an empty table for successful but empty responses
     else
-        local err_msg = "API request failed. HTTP status: " .. tostring(status or hdrs or 'unknown')
+        local err_msg = "API request failed. HTTP status: " .. tostring(status or 'unknown') .. " Headers: " .. headersForLog(hdrs)
         if result and #result > 0 then
-            local decoded_err = JSON:decode(result)
+            local decoded_err = decoded
             if decoded_err and decoded_err.error then
                 err_msg = err_msg .. " - " .. decoded_err.error
             else
