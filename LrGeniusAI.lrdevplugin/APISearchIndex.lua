@@ -67,7 +67,16 @@ local function safePluginProperty(photo, key)
 end
 
 local function nonEmpty(value)
-    return value ~= nil and tostring(value) ~= ""
+    if value == nil then
+        return false
+    end
+
+    local text = tostring(value)
+    if Util and Util.trim then
+        text = Util.trim(text)
+    end
+
+    return text ~= ""
 end
 
 local function formatCaptureTime(value)
@@ -82,6 +91,9 @@ local function formatCaptureTime(value)
         end
         return nil
     end
+    if type(value) == "table" then
+        return nil
+    end
 
     local text = tostring(value)
     if Util and Util.trim then
@@ -98,149 +110,441 @@ local function formatCaptureTime(value)
     end
 
     return text
+end
+
+local function textValue(value)
+    if value == nil or type(value) == "table" then
+        return nil
+    end
+
+    local text = tostring(value)
+    if Util and Util.trim then
+        text = Util.trim(text)
+    end
+
+    if text == "" or text == "--" or text == "---" then
+        return nil
+    end
+
+    local lowered = string.lower(text)
+    if lowered == "unknown" or lowered == "none" or lowered == "nil" then
+        return nil
+    end
+
+    return text
+end
+
+local function leafName(path)
+    local text = textValue(path)
+    if not text then
+        return nil
+    end
+
+    local success, name = pcall(function()
+        return LrPathUtils.leafName(text)
+    end)
+    if success then
+        return textValue(name)
+    end
+
+    return nil
+end
+
+local function readTextFile(path)
+    local file = io.open(path, "r")
+    if not file then
+        return nil
+    end
+
+    local content = file:read("*all")
+    file:close()
+    return content
+end
+
+local function safeDeleteFile(path)
+    if nonEmpty(path) then
+        pcall(function()
+            LrFileUtils.delete(path)
+        end)
+    end
+end
+
+local function shellQuote(value)
+    local text = tostring(value or "")
+    if string.match(text, "^[%w%._%-%+%/%:\\]+$") then
+        return text
+    end
+
+    if MAC_ENV then
+        return "'" .. string.gsub(text, "'", "'\\''") .. "'"
+    end
+
+    return '"' .. string.gsub(text, '"', '\\"') .. '"'
+end
+
+local function executeShellCommand(command)
+    if MAC_ENV then
+        return LrTasks.execute("/bin/sh -c " .. shellQuote(command))
+    end
+
+    return LrTasks.execute(command)
+end
+
+local function normalizedMetadataKey(key)
+    return string.gsub(string.lower(tostring(key or "")), "[^%w]", "")
+end
+
+local function metadataTableValue(metadata, key)
+    if type(metadata) ~= "table" then
+        return nil
+    end
+
+    if metadata[key] ~= nil then
+        return metadata[key]
+    end
+
+    local loweredKey = string.lower(key)
+    local normalizedKey = normalizedMetadataKey(key)
+    for metadataKey, value in pairs(metadata) do
+        if type(metadataKey) == "string" then
+            local loweredMetadataKey = string.lower(metadataKey)
+            local normalizedCandidateKey = normalizedMetadataKey(metadataKey)
+            if loweredMetadataKey == loweredKey
+                or normalizedCandidateKey == normalizedKey
+                or string.find(normalizedCandidateKey, normalizedKey, 1, true) ~= nil then
+                return value
+            end
+        end
+    end
+
+    return nil
+end
+
+local function exifTableValue(exif, key)
+    if type(exif) ~= "table" then
+        return nil
+    end
+
+    if exif[key] ~= nil then
+        return exif[key]
+    end
+
+    local normalizedKey = normalizedMetadataKey(key)
+    for exifKey, value in pairs(exif) do
+        if type(exifKey) == "string" then
+            local normalizedExifKey = normalizedMetadataKey(exifKey)
+            if normalizedExifKey == normalizedKey
+                or string.sub(normalizedExifKey, -string.len(normalizedKey)) == normalizedKey then
+                return value
+            end
+        end
+    end
+
+    return nil
+end
+
+local function normalizeExifCaptureTime(value)
+    local text = formatCaptureTime(value)
+    if not text then
+        return nil
+    end
+
+    local normalized = string.gsub(text, "^(%d%d%d%d):(%d%d):(%d%d)", "%1-%2-%3")
+    return normalized
+end
+
+local function captureTimeFromExif(exif)
+    local keys = {
+        "SubSecDateTimeOriginal",
+        "DateTimeOriginal",
+        "CreateDate",
+        "DateCreated",
+        "DateTimeDigitized",
+        "DateTimeCreated",
+        "OriginalDateTime",
+        "CreationDate",
+        "creation",
+        "DateTime",
+    }
+
+    for _, key in ipairs(keys) do
+        local value = normalizeExifCaptureTime(exifTableValue(exif, key))
+        if value then
+            return value, "raw-exif:" .. key
+        end
+    end
+
+    return nil, nil
+end
+
+local function filenameFromExif(exif, originalPath)
+    local filename = textValue(exifTableValue(exif, "FileName"))
+    if filename then
+        return filename, "raw-exif:FileName"
+    end
+
+    filename = leafName(exifTableValue(exif, "SourceFile"))
+    if filename then
+        return filename, "raw-exif:SourceFile"
+    end
+
+    filename = leafName(originalPath)
+    if filename then
+        return filename, "raw-path"
+    end
+
+    return nil, nil
+end
+
+local function exiftoolCandidates()
+    if MAC_ENV then
+        return {
+            "/opt/homebrew/bin/exiftool",
+            "/usr/local/bin/exiftool",
+            "/usr/bin/exiftool",
+            "exiftool",
+        }
+    end
+
+    return { "exiftool" }
+end
+
+local function sipsCandidates()
+    if MAC_ENV then
+        return { "/usr/bin/sips", "sips" }
+    end
+
+    return {}
+end
+
+local function parseSipsMetadata(output, originalPath)
+    local metadata = {}
+    for line in string.gmatch(output or "", "[^\r\n]+") do
+        local key, value = string.match(line, "^%s*([^:]+):%s*(.*)$")
+        key = textValue(key)
+        value = textValue(value)
+        if key and value then
+            metadata[key] = value
+        end
+    end
+
+    local filename = leafName(originalPath)
+    if filename then
+        metadata.FileName = filename
+    end
+    metadata.SourceFile = originalPath
+
+    if next(metadata) ~= nil then
+        return metadata
+    end
+
+    return nil
+end
+
+local function readRawFileMetadataWithSips(originalPath, outputPath, errorPath)
+    for _, executable in ipairs(sipsCandidates()) do
+        safeDeleteFile(outputPath)
+        safeDeleteFile(errorPath)
+
+        local command = table.concat({
+            shellQuote(executable),
+            "-g",
+            "all",
+            shellQuote(originalPath),
+            ">",
+            shellQuote(outputPath),
+            "2>",
+            shellQuote(errorPath),
+        }, " ")
+
+        log:trace("Reading RAW metadata with command: " .. command)
+        local exitCode = executeShellCommand(command)
+        local output = readTextFile(outputPath)
+        local errorOutput = readTextFile(errorPath)
+
+        if exitCode == 0 and nonEmpty(output) then
+            local exif = parseSipsMetadata(output, originalPath)
+            if exif then
+                local captureTimeValue, captureTimeSource = captureTimeFromExif(exif)
+                if captureTimeValue then
+                    exif.capture_time = captureTimeValue
+                    exif.capture_time_source = captureTimeSource
+                end
+                local filename, filenameSource = filenameFromExif(exif, originalPath)
+                if filename then
+                    exif.filename = filename
+                    exif.filename_source = filenameSource
+                end
+                exif.exif_source = "sips:" .. executable
+                exif.original_path = originalPath
+                return exif, "sips:" .. executable
+            end
+        else
+            log:trace(
+                "sips candidate failed: " .. tostring(executable) ..
+                ", exit_code=" .. tostring(exitCode) ..
+                ", error=" .. tostring(errorOutput)
+            )
+        end
+    end
+
+    return nil, nil
+end
+
+local function readRawFileExif(path)
+    local originalPath = textValue(path)
+    if not originalPath then
+        return nil, "missing-original-path"
+    end
+
+    if not LrFileUtils.exists(originalPath) then
+        return nil, "original-file-not-found:" .. originalPath
+    end
+
+    local tempDir = LrPathUtils.getStandardFilePath("temp")
+    local token = tostring(math.floor((LrDate.currentTime() or 0) * 1000))
+    local outputPath = LrPathUtils.child(tempDir, "LrGeniusAI-exif-" .. token .. ".json")
+    local errorPath = LrPathUtils.child(tempDir, "LrGeniusAI-exif-" .. token .. ".err")
+
+    for _, executable in ipairs(exiftoolCandidates()) do
+        safeDeleteFile(outputPath)
+        safeDeleteFile(errorPath)
+
+        local command = table.concat({
+            shellQuote(executable),
+            "-json",
+            "-a",
+            "-n",
+            "-G1",
+            "-api",
+            "largefilesupport=1",
+            shellQuote(originalPath),
+            ">",
+            shellQuote(outputPath),
+            "2>",
+            shellQuote(errorPath),
+        }, " ")
+
+        log:trace("Reading RAW EXIF with command: " .. command)
+        local exitCode = executeShellCommand(command)
+        local output = readTextFile(outputPath)
+        local errorOutput = readTextFile(errorPath)
+
+        if exitCode == 0 and nonEmpty(output) then
+            local success, decoded = pcall(function()
+                return JSON:decode(output)
+            end)
+
+            if success and type(decoded) == "table" then
+                local exif = decoded[1] or decoded
+                if type(exif) == "table" then
+                    local captureTimeValue, captureTimeSource = captureTimeFromExif(exif)
+                    if captureTimeValue then
+                        exif.capture_time = captureTimeValue
+                        exif.capture_time_source = captureTimeSource
+                    end
+                    local filename, filenameSource = filenameFromExif(exif, originalPath)
+                    if filename then
+                        exif.filename = filename
+                        exif.filename_source = filenameSource
+                    end
+                    exif.exif_source = "exiftool:" .. executable
+                    exif.original_path = originalPath
+                    safeDeleteFile(outputPath)
+                    safeDeleteFile(errorPath)
+                    return exif, "exiftool:" .. executable
+                end
+            end
+
+            log:warn("Could not decode exiftool JSON for " .. originalPath)
+        else
+            log:trace(
+                "exiftool candidate failed: " .. tostring(executable) ..
+                ", exit_code=" .. tostring(exitCode) ..
+                ", error=" .. tostring(errorOutput)
+            )
+        end
+    end
+
+    local sipsExif, sipsSource = readRawFileMetadataWithSips(originalPath, outputPath, errorPath)
+    if sipsExif then
+        safeDeleteFile(outputPath)
+        safeDeleteFile(errorPath)
+        return sipsExif, sipsSource
+    end
+
+    safeDeleteFile(outputPath)
+    safeDeleteFile(errorPath)
+    return nil, "raw-metadata-tools-unavailable-or-failed"
 end
 
 local function photoFilename(photo, fallbackPath)
-    local filename = safeFormattedMetadata(photo, "fileName")
-    if nonEmpty(filename) then
-        return tostring(filename)
-    end
+    local keys = { "fileName", "filename", "preservedFileName", "com.adobe.filename" }
 
-    local path = safeRawMetadata(photo, "path")
-    if not nonEmpty(path) then
-        path = fallbackPath
-    end
-    if nonEmpty(path) then
-        return LrPathUtils.leafName(tostring(path))
-    end
-
-    return ""
-end
-
-local function captureTimeFromMetadata(photo)
-    local rawKeys = {
-        "dateTimeOriginalISO8601",
-        "dateTimeOriginal",
-        "dateTimeISO8601",
-        "dateTime",
-    }
-
-    local formattedKeys = {
-        "dateTimeOriginal",
-        "dateTimeDigitized",
-        "dateTime",
-    }
-
-    for _, key in ipairs(rawKeys) do
-        local value = formatCaptureTime(safeRawMetadata(photo, key))
-        if value then
-            return value
+    for _, key in ipairs(keys) do
+        local filename = textValue(safeFormattedMetadata(photo, key))
+        if filename then
+            return filename, "formatted:" .. key
         end
     end
 
-    for _, key in ipairs(formattedKeys) do
-        local value = formatCaptureTime(safeFormattedMetadata(photo, key))
-        if value then
-            return value
+    local formattedMetadata = safeFormattedMetadata(photo, nil)
+    for _, key in ipairs(keys) do
+        local filename = textValue(metadataTableValue(formattedMetadata, key))
+        if filename then
+            return filename, "formatted-all:" .. key
         end
     end
 
-    return nil
-end
-
-local function captureTime(photo)
-    return captureTimeFromMetadata(photo) or ""
-end
-
-local function exifValue(value)
-    if value == nil then
-        return nil
+    local rawMetadata = safeRawMetadata(photo, nil)
+    local rawPath = metadataTableValue(rawMetadata, "path") or safeRawMetadata(photo, "path")
+    local filename = leafName(rawPath)
+    if filename then
+        return filename, "raw:path"
     end
 
-    if type(value) == "table" then
-        if next(value) ~= nil then
-            return value
+    filename = leafName(fallbackPath)
+    if filename then
+        return filename, "fallback:path"
+    end
+
+    return "", "empty"
+end
+
+local function rawPhotoMetadata(photo)
+    local originalFilePath = safeRawMetadata(photo, "path")
+    local rawExif, rawExifSource = readRawFileExif(originalFilePath)
+    local filename, filenameSource = filenameFromExif(rawExif, originalFilePath)
+    if not filename then
+        filename, filenameSource = photoFilename(photo, originalFilePath)
+    end
+
+    local captureTimeValue, captureTimeSource = captureTimeFromExif(rawExif)
+    captureTimeValue = captureTimeValue or ""
+    captureTimeSource = captureTimeSource or rawExifSource or "empty"
+
+    if rawExif then
+        if nonEmpty(captureTimeValue) then
+            rawExif.capture_time = captureTimeValue
         end
-        return nil
+        if nonEmpty(filename) then
+            rawExif.filename = filename
+        end
+        rawExif.capture_time_source = captureTimeSource
+        rawExif.filename_source = filenameSource
+        rawExif.exif_read_source = rawExifSource
+        rawExif.original_path = originalFilePath
     end
 
-    if type(value) == "number" or type(value) == "boolean" then
-        return value
-    end
-
-    local text = tostring(value)
-    if Util and Util.trim then
-        text = Util.trim(text)
-    end
-
-    if text == "" or text == "--" or text == "---" then
-        return nil
-    end
-
-    local lowered = string.lower(text)
-    if lowered == "unknown" or lowered == "none" or lowered == "nil" then
-        return nil
-    end
-
-    return text
-end
-
-local function addExifField(photo, exif, outputKey, metadataKey)
-    local value = exifValue(safeFormattedMetadata(photo, metadataKey))
-        or exifValue(safeRawMetadata(photo, metadataKey))
-    if value ~= nil then
-        exif[outputKey] = value
-    end
-end
-
-local function photoExif(photo)
-    local exif = {}
-    local fields = {
-        { "capture_time", "dateTimeOriginalISO8601" },
-        { "date_time_original", "dateTimeOriginal" },
-        { "date_time_digitized", "dateTimeDigitized" },
-        { "date_time", "dateTime" },
-        { "camera_make", "cameraMake" },
-        { "camera_model", "cameraModel" },
-        { "lens", "lens" },
-        { "iso_speed_rating", "isoSpeedRating" },
-        { "aperture", "aperture" },
-        { "shutter_speed", "shutterSpeed" },
-        { "exposure", "exposure" },
-        { "focal_length", "focalLength" },
-        { "focal_length_35mm", "focalLength35mm" },
-        { "exposure_bias", "exposureBias" },
-        { "exposure_program", "exposureProgram" },
-        { "exposure_mode", "exposureMode" },
-        { "flash", "flash" },
-        { "metering_mode", "meteringMode" },
-        { "white_balance", "whiteBalance" },
-        { "subject_distance", "subjectDistance" },
-        { "camera_serial_number", "cameraSerialNumber" },
-        { "lens_serial_number", "lensSerialNumber" },
-        { "file_format", "fileFormat" },
-        { "file_name", "fileName" },
-        { "copy_name", "copyName" },
-        { "orientation", "orientation" },
-        { "dimensions", "dimensions" },
-        { "cropped_dimensions", "croppedDimensions" },
-        { "gps", "gps" },
+    return {
+        original_file_path = originalFilePath,
+        exif = rawExif,
+        exif_source = rawExifSource,
+        filename = filename or "",
+        filename_source = filenameSource or "empty",
+        capture_time = captureTimeValue,
+        capture_time_source = captureTimeSource,
     }
-
-    for _, field in ipairs(fields) do
-        addExifField(photo, exif, field[1], field[2])
-    end
-
-    local captureTimeValue = captureTime(photo)
-    if nonEmpty(captureTimeValue) then
-        exif.capture_time = captureTimeValue
-    end
-
-    if next(exif) ~= nil then
-        return exif
-    end
-
-    return nil
 end
 
 local function aiModelValue(options, photo)
@@ -288,6 +592,27 @@ local function addMimeValue(mimeChunks, name, value)
     end
 
     table.insert(mimeChunks, { name = name, value = value })
+end
+
+local function logMultipartPayload(mimeChunks)
+    local payload = {}
+    for _, chunk in ipairs(mimeChunks) do
+        local item = { name = chunk.name }
+        if chunk.filePath then
+            item.fileName = chunk.fileName
+            item.filePath = chunk.filePath
+            item.contentType = chunk.contentType
+        else
+            if chunk.name == "api_key" then
+                item.value = "<redacted>"
+            else
+                item.value = chunk.value
+            end
+        end
+        table.insert(payload, item)
+    end
+
+    log:trace("Multipart payload sent to backend: " .. Util.dumpTable(payload))
 end
 
 local ENDPOINTS = {
@@ -339,7 +664,7 @@ function SearchIndexAPI.exportPhotoForIndexing(photo)
     end
 
     local tempDir = LrPathUtils.getStandardFilePath('temp')
-    local photoName = LrPathUtils.leafName(photo:getFormattedMetadata('fileName'))
+    local photoName = photoFilename(photo)
     local catalog = LrApplication.activeCatalog()
 
     EXPORT_SETTINGS.LR_export_destinationPathPrefix = tempDir
@@ -351,6 +676,9 @@ function SearchIndexAPI.exportPhotoForIndexing(photo)
 
     for _, rendition in exportSession:renditions() do
         local success, path = rendition:waitForRender()
+        if not nonEmpty(photoName) then
+            photoName = leafName(path) or "unknown"
+        end
         log:trace("Export completed for photo: " .. photoName .. " Success: " .. tostring(success) .. " Path: " .. tostring(path))
         if success then -- Export successful
             return path
@@ -380,7 +708,7 @@ function SearchIndexAPI.exportPhotosForIndexing(photos)
         local success, path = rendition:waitForRender()
         local photo = photos[photoIndex]
         if photo ~= nil then
-            local photoName = LrPathUtils.leafName(photo:getFormattedMetadata('fileName'))
+            local photoName = photoFilename(photo, path)
             log:trace("Export completed for photo: " .. photoName .. " Success: " .. tostring(success) .. " Path: " .. tostring(path))
             if success then
                 photoPaths[photo] = path
@@ -433,7 +761,7 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
     end
 
     options = options or {}
-    local filename = nonEmpty(options.filename) and options.filename or LrPathUtils.leafName(filepath)
+    local filename = textValue(options.filename) or leafName(filepath) or tostring(uuid or "image") .. ".jpg"
     local captureTimeValue = formatCaptureTime(options.capture_time) or ""
     
     local url, urlErr = endpointUrl(ENDPOINTS.INDEX)
@@ -455,6 +783,10 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
     addMimeValue(mimeChunks, "filename", filename)
     addMimeValue(mimeChunks, "capture_time", captureTimeValue)
     addMimeValue(mimeChunks, "ai_model", aiModelValue(options))
+
+    if not nonEmpty(captureTimeValue) then
+        log:warn("capture_time is empty for " .. tostring(filename))
+    end
 
     if options.provider then
         table.insert(mimeChunks, { name = "provider", value = options.provider })
@@ -528,6 +860,7 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
     })
     
     log:trace("Analyzing and indexing photo: " .. filename .. " with tasks: " .. table.concat(tasks, ", "))
+    logMultipartPayload(mimeChunks)
 
     local response, err = _requestMultipart(url, mimeChunks, 720)
 
@@ -814,12 +1147,16 @@ function SearchIndexAPI.analyzeAndIndexSelectedPhotos(selectedPhotos, progressSc
             if photo ~= nil then
                 
                 local uuid = photo:getRawMetadata("uuid")
-                local filename = photoFilename(photo)
+                local rawMetadata = rawPhotoMetadata(photo)
+                local filename = rawMetadata.filename
                 
                 -- Export photo as JPEG
                 local exportedPhotoPath = SearchIndexAPI.exportPhotoForIndexing(photo)
                 
                 if exportedPhotoPath ~= nil then
+                    if not nonEmpty(filename) then
+                        filename, rawMetadata.filename_source = photoFilename(photo, exportedPhotoPath)
+                    end
 
                     -- Prepare analysis options with photo-specific context
                     local photoOptions = {}
@@ -828,14 +1165,21 @@ function SearchIndexAPI.analyzeAndIndexSelectedPhotos(selectedPhotos, progressSc
                     end
 
                     photoOptions.filename = filename
-                    photoOptions.capture_time = captureTime(photo)
+                    photoOptions.capture_time = rawMetadata.capture_time
                     photoOptions.ai_model = aiModelValue(photoOptions, photo)
 
-                    local exif = photoExif(photo)
-                    if exif then
-                        photoOptions.exif = exif
+                    if rawMetadata.exif then
+                        photoOptions.exif = rawMetadata.exif
                     end
 
+                    log:trace(
+                        "Resolved fields for photo " .. tostring(filename) ..
+                        ": original_file_path=" .. tostring(rawMetadata.original_file_path) ..
+                        ", exif_source=" .. tostring(rawMetadata.exif_source) ..
+                        ", filename_source=" .. tostring(rawMetadata.filename_source) ..
+                        ", capture_time_source=" .. tostring(rawMetadata.capture_time_source) ..
+                        ", capture_time=" .. tostring(rawMetadata.capture_time)
+                    )
                     log:trace("Options for photo " .. filename .. ": " .. Util.dumpTable(photoOptions))
                     
                     -- Add GPS if enabled
@@ -974,10 +1318,11 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
                 break
             end
 
+            local rawMetadata = rawPhotoMetadata(photo)
             local metadata = {
                 uuid = safeRawMetadata(photo, "uuid") or "",
-                filename = photoFilename(photo),
-                capture_time = captureTime(photo),
+                filename = rawMetadata.filename,
+                capture_time = rawMetadata.capture_time,
                 ai_model = aiModelValue(nil, photo),
                 caption = photo:getFormattedMetadata("caption"),
                 title = photo:getFormattedMetadata("title"),
@@ -989,14 +1334,23 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
                 ai_rundate = safePluginProperty(photo, "aiLastRun") or ""
             }
 
-            local exif = photoExif(photo)
-            if exif then
-                metadata.exif = exif
+            if rawMetadata.exif then
+                metadata.exif = rawMetadata.exif
             end
+
+            log:trace(
+                "Import metadata resolved fields for photo " .. tostring(metadata.filename) ..
+                ": original_file_path=" .. tostring(rawMetadata.original_file_path) ..
+                ", exif_source=" .. tostring(rawMetadata.exif_source) ..
+                ", filename_source=" .. tostring(rawMetadata.filename_source) ..
+                ", capture_time_source=" .. tostring(rawMetadata.capture_time_source) ..
+                ", capture_time=" .. tostring(rawMetadata.capture_time)
+            )
 
             table.insert(metadataBatch, metadata)
 
             if #metadataBatch >= batchSize or i == numPhotos then
+                log:trace("Metadata import payload sent to backend: " .. Util.dumpTable({ metadata_items = metadataBatch }))
                 local response = _request('POST', importUrl, { metadata_items = metadataBatch })
                 if response ~= nil and response.status == "processed" then
                     stats.success = stats.success + #metadataBatch
