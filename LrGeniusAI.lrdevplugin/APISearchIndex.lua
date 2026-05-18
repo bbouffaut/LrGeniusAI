@@ -40,7 +40,7 @@ end
 local function safePhotoCall(photo, callback, context)
     if photo == nil then return nil end
 
-    local success, value = pcall(callback)
+    local success, value = LrTasks.pcall(callback)
     if success then
         return value
     end
@@ -536,7 +536,7 @@ local function mergeMetadataTables(primary, secondary)
 end
 
 local function batchGetCatalogMetadata(catalog, photos, accessorName, keys)
-    local success, metadata = pcall(function()
+    local success, metadata = LrTasks.pcall(function()
         if accessorName == "raw" then
             return catalog:batchGetRawMetadata(photos, keys)
         end
