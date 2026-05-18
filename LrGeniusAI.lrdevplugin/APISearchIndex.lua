@@ -70,7 +70,7 @@ local function nonEmpty(value)
     return value ~= nil and tostring(value) ~= ""
 end
 
-local function formatPhotoDate(value)
+local function formatCaptureTime(value)
     if value == nil then return nil end
     if type(value) == "number" then
         if value <= 0 then return nil end
@@ -117,7 +117,7 @@ local function photoFilename(photo, fallbackPath)
     return ""
 end
 
-local function photoDateFromMetadata(photo)
+local function captureTimeFromMetadata(photo)
     local rawKeys = {
         "dateTimeOriginalISO8601",
         "dateTimeOriginal",
@@ -132,14 +132,14 @@ local function photoDateFromMetadata(photo)
     }
 
     for _, key in ipairs(rawKeys) do
-        local value = formatPhotoDate(safeRawMetadata(photo, key))
+        local value = formatCaptureTime(safeRawMetadata(photo, key))
         if value then
             return value
         end
     end
 
     for _, key in ipairs(formattedKeys) do
-        local value = formatPhotoDate(safeFormattedMetadata(photo, key))
+        local value = formatCaptureTime(safeFormattedMetadata(photo, key))
         if value then
             return value
         end
@@ -148,31 +148,92 @@ local function photoDateFromMetadata(photo)
     return nil
 end
 
-local function photoDate(photo)
-    return photoDateFromMetadata(photo) or ""
+local function captureTime(photo)
+    return captureTimeFromMetadata(photo) or ""
+end
+
+local function exifValue(value)
+    if value == nil then
+        return nil
+    end
+
+    if type(value) == "table" then
+        if next(value) ~= nil then
+            return value
+        end
+        return nil
+    end
+
+    if type(value) == "number" or type(value) == "boolean" then
+        return value
+    end
+
+    local text = tostring(value)
+    if Util and Util.trim then
+        text = Util.trim(text)
+    end
+
+    if text == "" or text == "--" or text == "---" then
+        return nil
+    end
+
+    local lowered = string.lower(text)
+    if lowered == "unknown" or lowered == "none" or lowered == "nil" then
+        return nil
+    end
+
+    return text
+end
+
+local function addExifField(photo, exif, outputKey, metadataKey)
+    local value = exifValue(safeFormattedMetadata(photo, metadataKey))
+        or exifValue(safeRawMetadata(photo, metadataKey))
+    if value ~= nil then
+        exif[outputKey] = value
+    end
 end
 
 local function photoExif(photo)
     local exif = {}
     local fields = {
+        { "capture_time", "dateTimeOriginalISO8601" },
+        { "date_time_original", "dateTimeOriginal" },
+        { "date_time_digitized", "dateTimeDigitized" },
+        { "date_time", "dateTime" },
         { "camera_make", "cameraMake" },
         { "camera_model", "cameraModel" },
         { "lens", "lens" },
         { "iso_speed_rating", "isoSpeedRating" },
         { "aperture", "aperture" },
         { "shutter_speed", "shutterSpeed" },
+        { "exposure", "exposure" },
         { "focal_length", "focalLength" },
+        { "focal_length_35mm", "focalLength35mm" },
         { "exposure_bias", "exposureBias" },
+        { "exposure_program", "exposureProgram" },
+        { "exposure_mode", "exposureMode" },
         { "flash", "flash" },
         { "metering_mode", "meteringMode" },
+        { "white_balance", "whiteBalance" },
+        { "subject_distance", "subjectDistance" },
+        { "camera_serial_number", "cameraSerialNumber" },
+        { "lens_serial_number", "lensSerialNumber" },
         { "file_format", "fileFormat" },
+        { "file_name", "fileName" },
+        { "copy_name", "copyName" },
+        { "orientation", "orientation" },
+        { "dimensions", "dimensions" },
+        { "cropped_dimensions", "croppedDimensions" },
+        { "gps", "gps" },
     }
 
     for _, field in ipairs(fields) do
-        local value = safeFormattedMetadata(photo, field[2]) or safeRawMetadata(photo, field[2])
-        if nonEmpty(value) then
-            exif[field[1]] = value
-        end
+        addExifField(photo, exif, field[1], field[2])
+    end
+
+    local captureTimeValue = captureTime(photo)
+    if nonEmpty(captureTimeValue) then
+        exif.capture_time = captureTimeValue
     end
 
     if next(exif) ~= nil then
@@ -358,7 +419,7 @@ end
 --   - folder_names string: Folder path
 --   - user_context string: Additional context for the photo
 --   - filename string: Original photo filename
---   - photo_date string: Capture date sent to the index
+--   - capture_time string: Capture time sent to the index
 --   - ai_model string: AI model label sent to the index
 --   - exif table: Optional EXIF data sent to the index
 -- @return boolean success, table|string response - Returns success status and response data or error message
@@ -373,7 +434,7 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
 
     options = options or {}
     local filename = nonEmpty(options.filename) and options.filename or LrPathUtils.leafName(filepath)
-    local photoDateValue = formatPhotoDate(options.photo_date) or ""
+    local captureTimeValue = formatCaptureTime(options.capture_time) or ""
     
     local url, urlErr = endpointUrl(ENDPOINTS.INDEX)
     if not url then
@@ -392,7 +453,7 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
 
     addMimeValue(mimeChunks, "uuid", uuid)
     addMimeValue(mimeChunks, "filename", filename)
-    addMimeValue(mimeChunks, "photo_date", photoDateValue)
+    addMimeValue(mimeChunks, "capture_time", captureTimeValue)
     addMimeValue(mimeChunks, "ai_model", aiModelValue(options))
 
     if options.provider then
@@ -767,7 +828,7 @@ function SearchIndexAPI.analyzeAndIndexSelectedPhotos(selectedPhotos, progressSc
                     end
 
                     photoOptions.filename = filename
-                    photoOptions.photo_date = photoDate(photo)
+                    photoOptions.capture_time = captureTime(photo)
                     photoOptions.ai_model = aiModelValue(photoOptions, photo)
 
                     local exif = photoExif(photo)
@@ -916,7 +977,7 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
             local metadata = {
                 uuid = safeRawMetadata(photo, "uuid") or "",
                 filename = photoFilename(photo),
-                photo_date = photoDate(photo),
+                capture_time = captureTime(photo),
                 ai_model = aiModelValue(nil, photo),
                 caption = photo:getFormattedMetadata("caption"),
                 title = photo:getFormattedMetadata("title"),
