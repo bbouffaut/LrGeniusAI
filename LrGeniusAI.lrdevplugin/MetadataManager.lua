@@ -76,6 +76,89 @@ local function metadataTextOrEmpty(value)
     return metadataTextValue(value) or ""
 end
 
+local function normalizedKeywordName(value)
+    local keywordName = metadataTextValue(value)
+    if keywordName == nil then
+        return nil
+    end
+
+    keywordName = Util.trim(keywordName)
+    if keywordName == "" or keywordName == "None" or keywordName == "none" then
+        return nil
+    end
+
+    return keywordName
+end
+
+local function sdkPcall(callback)
+    if LrTasks and LrTasks.pcall then
+        return LrTasks.pcall(callback)
+    end
+
+    return pcall(callback)
+end
+
+local function safeCreateKeyword(catalog, name, synonyms, includeOnExport, parent, returnExisting)
+    local keywordName = normalizedKeywordName(name)
+    if keywordName == nil then
+        return nil
+    end
+
+    local success, keyword = sdkPcall(function()
+        return catalog:createKeyword(keywordName, synonyms, includeOnExport, parent, returnExisting)
+    end)
+
+    if success then
+        return keyword
+    end
+
+    log:error("Failed to create keyword '" .. keywordName .. "': " .. tostring(keyword))
+    return nil
+end
+
+local function safeAddKeyword(photo, keyword, keywordName)
+    if keyword == nil then
+        return false
+    end
+
+    local success, err = sdkPcall(function()
+        photo:addKeyword(keyword)
+    end)
+
+    if success then
+        return true
+    end
+
+    log:error("Failed to add keyword '" .. tostring(keywordName or keyword) .. "' to photo: " .. tostring(err))
+    return false
+end
+
+local function safeSetRawMetadata(photo, key, value)
+    local success, err = sdkPcall(function()
+        photo:setRawMetadata(key, value)
+    end)
+
+    if success then
+        return true
+    end
+
+    log:error("Failed to set raw metadata '" .. tostring(key) .. "': " .. tostring(err))
+    return false
+end
+
+local function safeRemoveKeyword(photo, keyword)
+    local success, err = sdkPcall(function()
+        photo:removeKeyword(keyword)
+    end)
+
+    if success then
+        return true
+    end
+
+    log:error("Failed to remove keyword while replacing catalog keywords: " .. tostring(err))
+    return false
+end
+
 local function mergeText(catalogValue, backendValue, separator)
     local catalogText = Util.trim(metadataTextOrEmpty(catalogValue))
     local backendText = Util.trim(metadataTextOrEmpty(backendValue))
@@ -378,13 +461,13 @@ function MetadataManager.applyMetadata(photo, response, validatedData, options)
     log:trace("Saving title, caption, altText, keywords to catalog")
     catalog:withWriteAccessDo(LOC "$$$/lrc-ai-assistant/AnalyzeImageTask/saveTitleCaption=Save AI generated title and caption", function()
         if saveCaption and caption ~= nil and (options.replaceExistingMetadata or caption ~= "") then
-            photo:setRawMetadata('caption', caption)
+            safeSetRawMetadata(photo, 'caption', caption)
         end
         if saveTitle and title ~= nil and (options.replaceExistingMetadata or title ~= "") then
-            photo:setRawMetadata('title', title)
+            safeSetRawMetadata(photo, 'title', title)
         end
         if saveAltText and altText ~= nil and (options.replaceExistingMetadata or altText ~= "") then
-            photo:setRawMetadata('altTextAccessibility', altText)
+            safeSetRawMetadata(photo, 'altTextAccessibility', altText)
         end
     end, Defaults.catalogWriteAccessOptions)
 
@@ -395,12 +478,7 @@ function MetadataManager.applyMetadata(photo, response, validatedData, options)
             catalog:withWriteAccessDo("$$$/lrc-ai-assistant/AnalyzeImageTask/replaceKeywords=Replace catalog keywords", function()
                 local existingKeywords = photo:getRawMetadata('keywords') or {}
                 for _, keyword in ipairs(existingKeywords) do
-                    local removed, err = pcall(function()
-                        photo:removeKeyword(keyword)
-                    end)
-                    if not removed then
-                        log:error("Failed to remove keyword while replacing catalog keywords: " .. tostring(err))
-                    end
+                    safeRemoveKeyword(photo, keyword)
                 end
             end, Defaults.catalogWriteAccessOptions)
         end
@@ -408,12 +486,11 @@ function MetadataManager.applyMetadata(photo, response, validatedData, options)
         local topKeyword = nil
         if prefs.useKeywordHierarchy and options.useTopLevelKeyword then
             catalog:withWriteAccessDo("$$$/lrc-ai-assistant/AnalyzeImageTask/saveTopKeyword=Save AI generated keywords", function()
-                local topLevelKeyword = metadataTextValue(options.topLevelKeyword) or "LrGeniusAI"
-                topKeyword = catalog:createKeyword(topLevelKeyword, { Defaults.topLevelKeywordSynonym }, false, nil, true)
-                photo:addKeyword(topKeyword) -- Add top-level keyword to photo. To see the number of tagged photos in keyword list (Gerald Uhl)
+                local topLevelKeyword = normalizedKeywordName(options.topLevelKeyword) or "LrGeniusAI"
+                topKeyword = safeCreateKeyword(catalog, topLevelKeyword, { Defaults.topLevelKeywordSynonym }, false, nil, true)
             end)
             -- Keep track of used top-level keywords
-            local topLevelKeyword = metadataTextValue(options.topLevelKeyword) or "LrGeniusAI"
+            local topLevelKeyword = normalizedKeywordName(options.topLevelKeyword) or "LrGeniusAI"
             if not Util.table_contains(prefs.knownTopLevelKeywords, topLevelKeyword) then
                 table.insert(prefs.knownTopLevelKeywords, topLevelKeyword)
             end
@@ -449,22 +526,24 @@ function MetadataManager.addKeywordRecursively(photo, keywordSubTable, parent)
         -- log:trace("Processing keyword key: " .. tostring(key) .. " value: " .. tostring(value))
         local keyword
         if type(value) == 'table' then
-            if type(key) == 'string' and key ~= "" and key ~= "None" and key ~= "none" and prefs.useKeywordHierarchy then
-                keyword = photo.catalog:createKeyword(key, {}, false, parent, true)
+            local keywordName = normalizedKeywordName(key)
+            if type(key) == 'string' and keywordName ~= nil and prefs.useKeywordHierarchy then
+                keyword = safeCreateKeyword(photo.catalog, keywordName, nil, false, parent, true)
             end
             MetadataManager.addKeywordRecursively(photo, value, keyword or parent)
-        elseif type(key) == 'string' and key ~= "" and key ~= "None" and key ~= "none" and prefs.useKeywordHierarchy then
-            keyword = photo.catalog:createKeyword(key, {}, false, parent, true)
-        elseif type(key) == 'number' and value and value ~= "" and value ~= "None" and value ~= "none" then
+        elseif type(key) == 'string' and normalizedKeywordName(key) ~= nil and prefs.useKeywordHierarchy then
+            safeCreateKeyword(photo.catalog, key, nil, false, parent, true)
+        elseif type(key) == 'number' then
             local currentParent = prefs.useKeywordHierarchy and parent or nil
-            local keywordName = tostring(value)
-            if keywordName ~= "" and not Util.table_contains(addKeywords, keywordName) then
+            local keywordName = normalizedKeywordName(value)
+            if keywordName ~= nil and not Util.table_contains(addKeywords, keywordName) then
                 if keywordName == "Ollama" or keywordName == "LMStudio" or keywordName == "Google Gemini" or keywordName == "ChatGPT" or keywordName == "Mistral AI" or keywordName == "Anthropic" or keywordName == prefs.topLevelKeyword then
                     log:trace("Skipping keyword: " .. keywordName .. " as it is reserved.")
                 else
-                    keyword = photo.catalog:createKeyword(keywordName, {}, true, currentParent, true)
-                    photo:addKeyword(keyword)
-                    table.insert(addKeywords, keywordName)
+                    keyword = safeCreateKeyword(photo.catalog, keywordName, nil, true, currentParent, true)
+                    if safeAddKeyword(photo, keyword, keywordName) then
+                        table.insert(addKeywords, keywordName)
+                    end
                 end
             end
         end

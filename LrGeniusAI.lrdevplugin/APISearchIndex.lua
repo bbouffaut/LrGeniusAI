@@ -1496,8 +1496,6 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
         end
     end
 
-    progressScope:done()
-
     if progressScope:isCanceled() then
         return "canceled", stats.processed, stats.failed
     end

@@ -647,6 +647,7 @@ LrTasks.startAsyncTask(function()
             })
             log:trace("Importing existing metadata from catalog before indexing...")
             SearchIndexAPI.importMetadataFromCatalog(photosToProcess, importProgressScope)
+            importProgressScope:done()
         end
 
         log:trace("Starting AnalyzeAndIndexTask with " .. #photosToProcess .. " photos")
