@@ -3,8 +3,6 @@
 
 SearchIndexAPI = {}
 
-local backendPhotoDataByUuid = {}
-
 local function baseUrl()
     local url = prefs.serverBaseUrl
     if Util.nilOrEmpty(url) then
@@ -135,132 +133,6 @@ local function textValue(value)
     end
 
     return text
-end
-
-local function backendCacheKey(uuid)
-    local key = textValue(uuid)
-    if key then
-        return tostring(key)
-    end
-
-    return nil
-end
-
-local function encodeBackendPayload(data)
-    if type(data) ~= "table" then
-        return nil
-    end
-
-    local success, encoded = pcall(function()
-        return JSON:encode(data)
-    end)
-
-    if success then
-        return textValue(encoded)
-    end
-
-    log:warn("Failed to encode backend payload: " .. tostring(encoded))
-    return nil
-end
-
-local function decodeBackendPayload(payload)
-    local text = textValue(payload)
-    if not text then
-        return nil
-    end
-
-    local success, decoded = pcall(function()
-        return JSON:decode(text)
-    end)
-
-    if success and type(decoded) == "table" then
-        return decoded
-    end
-
-    log:warn("Failed to decode backend payload: " .. tostring(decoded))
-    return nil
-end
-
-local function rememberBackendPhotoData(uuid, data)
-    if type(data) ~= "table" then
-        return
-    end
-
-    local key = backendCacheKey(uuid) or backendCacheKey(data.uuid)
-    if key then
-        backendPhotoDataByUuid[key] = Util.deepcopy(data)
-    end
-
-    local payload = encodeBackendPayload(data)
-    if not key or not payload then
-        return
-    end
-
-    local prefsOk, prefsErr = pcall(function()
-        local payloads = prefs.backendPayloadByUuid
-        if type(payloads) ~= "table" then
-            payloads = {}
-        end
-        payloads[key] = payload
-        prefs.backendPayloadByUuid = payloads
-    end)
-    if not prefsOk then
-        log:warn("Failed to store backend payload in prefs: " .. tostring(prefsErr))
-    end
-
-    local writeOk, writeErr = LrTasks.pcall(function()
-        local catalog = LrApplication.activeCatalog()
-        local photo = catalog and catalog:findPhotoByUuid(key)
-        if photo then
-            catalog:withPrivateWriteAccessDo(function()
-                photo:setPropertyForPlugin(_PLUGIN, "backendPayload", payload)
-            end, Defaults.catalogWriteAccessOptions)
-        end
-    end)
-    if not writeOk then
-        log:warn("Failed to store backend payload on photo: " .. tostring(writeErr))
-    end
-end
-
-local function persistedBackendPhotoData(uuid, photo)
-    local key = backendCacheKey(uuid)
-    if not key then
-        return nil
-    end
-
-    local prefsPayload = nil
-    local prefsOk, prefsErr = pcall(function()
-        if type(prefs.backendPayloadByUuid) == "table" then
-            prefsPayload = prefs.backendPayloadByUuid[key]
-        end
-    end)
-    if not prefsOk then
-        log:warn("Failed to read backend payload from prefs: " .. tostring(prefsErr))
-    end
-
-    local prefsData = decodeBackendPayload(prefsPayload)
-    if prefsData then
-        return prefsData
-    end
-
-    return decodeBackendPayload(safePluginProperty(photo, "backendPayload"))
-end
-
-local function backendPhotoDataForUuid(uuid, backendDataByUuid, photo)
-    local key = backendCacheKey(uuid)
-    if not key then
-        return nil
-    end
-
-    if type(backendDataByUuid) == "table" and type(backendDataByUuid[key]) == "table" then
-        return backendDataByUuid[key]
-    end
-
-    if type(backendPhotoDataByUuid[key]) == "table" then
-        return backendPhotoDataByUuid[key]
-    end
-
-    return persistedBackendPhotoData(uuid, photo)
 end
 
 local function leafName(path)
@@ -788,54 +660,6 @@ local function providerFromModelKey(modelKey)
     return nil
 end
 
-local function backendTextField(data, keys)
-    if type(data) ~= "table" then
-        return nil
-    end
-
-    for _, key in ipairs(keys) do
-        local value = textValue(data[key])
-        if value then
-            return value
-        end
-    end
-
-    if type(data.metadata) == "table" then
-        for _, key in ipairs(keys) do
-            local value = textValue(data.metadata[key])
-            if value then
-                return value
-            end
-        end
-    end
-
-    return nil
-end
-
-local function backendImportBase(data)
-    if type(data) ~= "table" then
-        return {}
-    end
-
-    local base = Util.deepcopy(data)
-    base.status = nil
-    base.count = nil
-    base.photos = nil
-    base.error = nil
-    return base
-end
-
-local function setMetadataField(metadata, key, value)
-    if value == nil then
-        return
-    end
-
-    metadata[key] = value
-    if type(metadata.metadata) == "table" then
-        metadata.metadata[key] = value
-    end
-end
-
 local function providerValue(options, photo)
     options = options or {}
 
@@ -848,18 +672,8 @@ local function providerValue(options, photo)
         return tostring(provider)
     end
 
-    local catalogAiProvider = safePluginProperty(photo, "aiProvider")
-    if nonEmpty(catalogAiProvider) then
-        return tostring(catalogAiProvider)
-    end
-
-    provider = providerFromModelKey(safePluginProperty(photo, "aiModel"))
-    if nonEmpty(provider) then
-        return tostring(provider)
-    end
-
     if photo == nil then
-        provider = providerFromModelKey(prefs.modelKey)
+        local provider = providerFromModelKey(prefs.modelKey)
         if nonEmpty(provider) then
             return tostring(provider)
         end
@@ -1336,7 +1150,6 @@ function SearchIndexAPI.getPhotoData(uuid)
     if result and result.status == "success" then
         local normalized = normalizePhotoDataResponse(result, uuid)
         if normalized ~= nil then
-            rememberBackendPhotoData(uuid, normalized)
             log:trace("Successfully retrieved photo data for UUID: " .. uuid)
             return normalized
         end
@@ -1596,8 +1409,7 @@ end
 
 
 
-function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope, options)
-    options = options or {}
+function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope)
     local numPhotos = #photosToProcess
     if numPhotos == 0 then
         return "success", 0, 0
@@ -1627,41 +1439,19 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
                 break
             end
 
-            local uuid = safeRawMetadata(photo, "uuid") or ""
-            local backendData = backendPhotoDataForUuid(uuid, options.backendDataByUuid, photo)
             local catalogMetadata = catalogPhotoMetadata(photo, catalogMetadataLookup)
-
-            local filename = backendTextField(backendData, { "filename", "fileName" })
-                or textValue(catalogMetadata.filename)
-                or textValue(safePluginProperty(photo, "backendFilename"))
-            local aiModel = backendTextField(backendData, { "ai_model", "aiModel", "model" })
-                or aiModelValue(nil, photo)
-            local provider = backendTextField(backendData, { "provider", "ai_provider", "aiProvider" })
-                or providerValue({ ai_model = aiModel }, photo)
-
-            local metadata = backendImportBase(backendData)
-            metadata.uuid = uuid
-
-            setMetadataField(metadata, "filename", filename)
-            setMetadataField(metadata, "capture_time", catalogMetadata.capture_time)
-            setMetadataField(metadata, "caption", photo:getFormattedMetadata("caption"))
-            setMetadataField(metadata, "title", photo:getFormattedMetadata("title"))
-            setMetadataField(metadata, "keywords", MetadataManager.removeTopLevelKeyword(
-                MetadataManager.getPhotoKeywordHierarchy(photo),
-                prefs.topLevelKeyword
-            ))
-            setMetadataField(metadata, "alt_text", photo:getFormattedMetadata("altTextAccessibility"))
-
-            local aiRunDate = textValue(safePluginProperty(photo, "aiLastRun"))
-            setMetadataField(metadata, "ai_rundate", aiRunDate)
-
-            if nonEmpty(aiModel) then
-                setMetadataField(metadata, "ai_model", aiModel)
-            end
-
-            if nonEmpty(provider) then
-                setMetadataField(metadata, "provider", provider)
-            end
+            local metadata = {
+                uuid = safeRawMetadata(photo, "uuid") or "",
+                filename = catalogMetadata.filename,
+                capture_time = catalogMetadata.capture_time,
+                caption = photo:getFormattedMetadata("caption"),
+                title = photo:getFormattedMetadata("title"),
+                keywords = MetadataManager.removeTopLevelKeyword(
+                    MetadataManager.getPhotoKeywordHierarchy(photo),
+                    prefs.topLevelKeyword
+                ),
+                alt_text = photo:getFormattedMetadata("altTextAccessibility")
+            }
 
             if catalogMetadata.exif then
                 metadata.exif = catalogMetadata.exif
@@ -1673,9 +1463,7 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
                 ", exif_source=" .. tostring(catalogMetadata.exif_source) ..
                 ", filename_source=" .. tostring(catalogMetadata.filename_source) ..
                 ", capture_time_source=" .. tostring(catalogMetadata.capture_time_source) ..
-                ", capture_time=" .. tostring(catalogMetadata.capture_time) ..
-                ", ai_model=" .. tostring(metadata.ai_model) ..
-                ", provider=" .. tostring(metadata.provider)
+                ", capture_time=" .. tostring(catalogMetadata.capture_time)
             )
 
             table.insert(metadataBatch, metadata)

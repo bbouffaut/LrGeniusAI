@@ -296,11 +296,7 @@ LrTasks.startAsyncTask(function()
                         
                         -- Overwrite with validated data if any
                         if reviewResult == "ok" then
-                            local backendDataByUuid = {}
-                            backendDataByUuid[tostring(uuid)] = dataToApply
-                            SearchIndexAPI.importMetadataFromCatalog({ photo }, progressScope, {
-                                backendDataByUuid = backendDataByUuid
-                            })
+                            SearchIndexAPI.importMetadataFromCatalog({ photo }, progressScope)
                         end
                     end
                 else

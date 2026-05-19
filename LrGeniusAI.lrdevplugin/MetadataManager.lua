@@ -7,48 +7,6 @@ local function isBlank(value)
     return value == nil or type(value) == "table" or Util.trim(tostring(value)) == ""
 end
 
-local function nonEmpty(value)
-    return not isBlank(value)
-end
-
-local function providerFromModelKey(modelKey)
-    if not nonEmpty(modelKey) then
-        return nil
-    end
-
-    local text = Util.trim(tostring(modelKey))
-    local sep = string.find(text, "::", 1, true)
-    if sep and sep > 1 then
-        return string.sub(text, 1, sep - 1)
-    end
-
-    return nil
-end
-
-local function responseTextField(response, keys)
-    if type(response) ~= "table" then
-        return nil
-    end
-
-    for _, key in ipairs(keys) do
-        local value = response[key]
-        if nonEmpty(value) then
-            return Util.trim(tostring(value))
-        end
-    end
-
-    if type(response.metadata) == "table" then
-        for _, key in ipairs(keys) do
-            local value = response.metadata[key]
-            if nonEmpty(value) then
-                return Util.trim(tostring(value))
-            end
-        end
-    end
-
-    return nil
-end
-
 local function mergeText(catalogValue, backendValue, separator)
     local catalogText = Util.trim(tostring(catalogValue or ""))
     local backendText = Util.trim(tostring(backendValue or ""))
@@ -406,30 +364,6 @@ function MetadataManager.applyMetadata(photo, response, validatedData, options)
         end, Defaults.catalogWriteAccessOptions)
     end
 
-    local aiModel = responseTextField(response, { "ai_model", "aiModel", "model" })
-    local backendFilename = responseTextField(response, { "filename", "fileName" })
-    local provider = responseTextField(response, { "provider", "ai_provider", "aiProvider" })
-    if not nonEmpty(provider) then
-        provider = providerFromModelKey(aiModel)
-    end
-
-    if nonEmpty(aiModel) or nonEmpty(response.ai_rundate) or nonEmpty(provider) or nonEmpty(backendFilename) then
-        catalog:withPrivateWriteAccessDo(function()
-            log:trace("Saving backend metadata fields to catalog")
-            if nonEmpty(aiModel) then
-                photo:setPropertyForPlugin(_PLUGIN, "aiModel", tostring(aiModel))
-            end
-            if nonEmpty(response.ai_rundate) then
-                photo:setPropertyForPlugin(_PLUGIN, "aiLastRun", tostring(response.ai_rundate))
-            end
-            if nonEmpty(provider) then
-                photo:setPropertyForPlugin(_PLUGIN, "aiProvider", tostring(provider))
-            end
-            if nonEmpty(backendFilename) then
-                photo:setPropertyForPlugin(_PLUGIN, "backendFilename", tostring(backendFilename))
-            end
-        end, Defaults.catalogWriteAccessOptions)
-    end
 end
 
 ---

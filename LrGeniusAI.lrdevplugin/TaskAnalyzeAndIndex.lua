@@ -708,11 +708,7 @@ LrTasks.startAsyncTask(function()
 
                         -- Overwrite with validated data
                         log:trace("Reimported validated metadata for photo: " .. (photo:getFormattedMetadata('fileName') or "unknown"))
-                        local backendDataByUuid = {}
-                        backendDataByUuid[tostring(photo:getRawMetadata('uuid') or "")] = response
-                        SearchIndexAPI.importMetadataFromCatalog({ photo }, progressScope, {
-                            backendDataByUuid = backendDataByUuid
-                        })
+                        SearchIndexAPI.importMetadataFromCatalog({ photo }, progressScope)
 
                         savedCount = savedCount + 1
                     elseif result == "other" then

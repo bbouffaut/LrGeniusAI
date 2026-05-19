@@ -23,8 +23,6 @@ return {
         'com.adobe.separator',
         -- Custom fields must be plain identifiers (no dots). Use exactly the IDs you declare in MetadataProvider.lua:
         'aiModel',
-        'aiProvider',
-        'backendFilename',
         'aiLastRun',
         -- 'overall_score',
         -- 'composition_score',
