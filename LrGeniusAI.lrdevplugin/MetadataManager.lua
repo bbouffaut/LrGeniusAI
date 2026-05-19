@@ -25,6 +25,30 @@ local function providerFromModelKey(modelKey)
     return nil
 end
 
+local function responseTextField(response, keys)
+    if type(response) ~= "table" then
+        return nil
+    end
+
+    for _, key in ipairs(keys) do
+        local value = response[key]
+        if nonEmpty(value) then
+            return Util.trim(tostring(value))
+        end
+    end
+
+    if type(response.metadata) == "table" then
+        for _, key in ipairs(keys) do
+            local value = response.metadata[key]
+            if nonEmpty(value) then
+                return Util.trim(tostring(value))
+            end
+        end
+    end
+
+    return nil
+end
+
 local function mergeText(catalogValue, backendValue, separator)
     local catalogText = Util.trim(tostring(catalogValue or ""))
     local backendText = Util.trim(tostring(backendValue or ""))
@@ -382,24 +406,18 @@ function MetadataManager.applyMetadata(photo, response, validatedData, options)
         end, Defaults.catalogWriteAccessOptions)
     end
 
-    local backendFilename = response.filename
-    if not nonEmpty(backendFilename) and type(response.metadata) == "table" then
-        backendFilename = response.metadata.filename
-    end
-
-    local provider = response.provider
-    if not nonEmpty(provider) and type(response.metadata) == "table" then
-        provider = response.metadata.provider
-    end
+    local aiModel = responseTextField(response, { "ai_model", "aiModel", "model" })
+    local backendFilename = responseTextField(response, { "filename", "fileName" })
+    local provider = responseTextField(response, { "provider", "ai_provider", "aiProvider" })
     if not nonEmpty(provider) then
-        provider = providerFromModelKey(response.ai_model)
+        provider = providerFromModelKey(aiModel)
     end
 
-    if nonEmpty(response.ai_model) or nonEmpty(response.ai_rundate) or nonEmpty(provider) or nonEmpty(backendFilename) then
+    if nonEmpty(aiModel) or nonEmpty(response.ai_rundate) or nonEmpty(provider) or nonEmpty(backendFilename) then
         catalog:withPrivateWriteAccessDo(function()
             log:trace("Saving backend metadata fields to catalog")
-            if nonEmpty(response.ai_model) then
-                photo:setPropertyForPlugin(_PLUGIN, "aiModel", tostring(response.ai_model))
+            if nonEmpty(aiModel) then
+                photo:setPropertyForPlugin(_PLUGIN, "aiModel", tostring(aiModel))
             end
             if nonEmpty(response.ai_rundate) then
                 photo:setPropertyForPlugin(_PLUGIN, "aiLastRun", tostring(response.ai_rundate))

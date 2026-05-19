@@ -660,6 +660,30 @@ local function providerFromModelKey(modelKey)
     return nil
 end
 
+local function backendTextField(data, keys)
+    if type(data) ~= "table" then
+        return nil
+    end
+
+    for _, key in ipairs(keys) do
+        local value = textValue(data[key])
+        if value then
+            return value
+        end
+    end
+
+    if type(data.metadata) == "table" then
+        for _, key in ipairs(keys) do
+            local value = textValue(data.metadata[key])
+            if value then
+                return value
+            end
+        end
+    end
+
+    return nil
+end
+
 local function providerValue(options, photo)
     options = options or {}
 
@@ -667,13 +691,23 @@ local function providerValue(options, photo)
         return tostring(options.provider)
     end
 
+    local provider = providerFromModelKey(options.ai_model)
+    if nonEmpty(provider) then
+        return tostring(provider)
+    end
+
     local catalogAiProvider = safePluginProperty(photo, "aiProvider")
     if nonEmpty(catalogAiProvider) then
         return tostring(catalogAiProvider)
     end
 
+    provider = providerFromModelKey(safePluginProperty(photo, "aiModel"))
+    if nonEmpty(provider) then
+        return tostring(provider)
+    end
+
     if photo == nil then
-        local provider = providerFromModelKey(prefs.modelKey)
+        provider = providerFromModelKey(prefs.modelKey)
         if nonEmpty(provider) then
             return tostring(provider)
         end
@@ -1409,7 +1443,8 @@ end
 
 
 
-function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope)
+function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope, options)
+    options = options or {}
     local numPhotos = #photosToProcess
     if numPhotos == 0 then
         return "success", 0, 0
@@ -1439,17 +1474,20 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
                 break
             end
 
+            local uuid = safeRawMetadata(photo, "uuid") or ""
+            local backendData = options.backendDataByUuid and options.backendDataByUuid[tostring(uuid)]
             local catalogMetadata = catalogPhotoMetadata(photo, catalogMetadataLookup)
-            local filename = catalogMetadata.filename
-            local backendFilename = safePluginProperty(photo, "backendFilename")
-            if not nonEmpty(filename) and nonEmpty(backendFilename) then
-                filename = tostring(backendFilename)
-            end
 
-            local aiModel = aiModelValue(nil, photo)
-            local provider = providerValue(nil, photo)
+            local filename = backendTextField(backendData, { "filename", "fileName" })
+                or textValue(catalogMetadata.filename)
+                or textValue(safePluginProperty(photo, "backendFilename"))
+            local aiModel = backendTextField(backendData, { "ai_model", "aiModel", "model" })
+                or aiModelValue(nil, photo)
+            local provider = backendTextField(backendData, { "provider", "ai_provider", "aiProvider" })
+                or providerValue({ ai_model = aiModel }, photo)
+
             local metadata = {
-                uuid = safeRawMetadata(photo, "uuid") or "",
+                uuid = uuid,
                 filename = filename or "",
                 capture_time = catalogMetadata.capture_time,
                 caption = photo:getFormattedMetadata("caption"),
