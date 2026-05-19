@@ -3,6 +3,8 @@
 
 SearchIndexAPI = {}
 
+local backendPhotoDataByUuid = {}
+
 local function baseUrl()
     local url = prefs.serverBaseUrl
     if Util.nilOrEmpty(url) then
@@ -133,6 +135,39 @@ local function textValue(value)
     end
 
     return text
+end
+
+local function backendCacheKey(uuid)
+    local key = textValue(uuid)
+    if key then
+        return tostring(key)
+    end
+
+    return nil
+end
+
+local function rememberBackendPhotoData(uuid, data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    local key = backendCacheKey(uuid) or backendCacheKey(data.uuid)
+    if key then
+        backendPhotoDataByUuid[key] = Util.deepcopy(data)
+    end
+end
+
+local function backendPhotoDataForUuid(uuid, backendDataByUuid)
+    local key = backendCacheKey(uuid)
+    if not key then
+        return nil
+    end
+
+    if type(backendDataByUuid) == "table" and type(backendDataByUuid[key]) == "table" then
+        return backendDataByUuid[key]
+    end
+
+    return backendPhotoDataByUuid[key]
 end
 
 local function leafName(path)
@@ -684,6 +719,30 @@ local function backendTextField(data, keys)
     return nil
 end
 
+local function backendImportBase(data)
+    if type(data) ~= "table" then
+        return {}
+    end
+
+    local base = Util.deepcopy(data)
+    base.status = nil
+    base.count = nil
+    base.photos = nil
+    base.error = nil
+    return base
+end
+
+local function setMetadataField(metadata, key, value)
+    if value == nil then
+        return
+    end
+
+    metadata[key] = value
+    if type(metadata.metadata) == "table" then
+        metadata.metadata[key] = value
+    end
+end
+
 local function providerValue(options, photo)
     options = options or {}
 
@@ -1184,6 +1243,7 @@ function SearchIndexAPI.getPhotoData(uuid)
     if result and result.status == "success" then
         local normalized = normalizePhotoDataResponse(result, uuid)
         if normalized ~= nil then
+            rememberBackendPhotoData(uuid, normalized)
             log:trace("Successfully retrieved photo data for UUID: " .. uuid)
             return normalized
         end
@@ -1475,7 +1535,7 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
             end
 
             local uuid = safeRawMetadata(photo, "uuid") or ""
-            local backendData = options.backendDataByUuid and options.backendDataByUuid[tostring(uuid)]
+            local backendData = backendPhotoDataForUuid(uuid, options.backendDataByUuid)
             local catalogMetadata = catalogPhotoMetadata(photo, catalogMetadataLookup)
 
             local filename = backendTextField(backendData, { "filename", "fileName" })
@@ -1486,26 +1546,28 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
             local provider = backendTextField(backendData, { "provider", "ai_provider", "aiProvider" })
                 or providerValue({ ai_model = aiModel }, photo)
 
-            local metadata = {
-                uuid = uuid,
-                filename = filename or "",
-                capture_time = catalogMetadata.capture_time,
-                caption = photo:getFormattedMetadata("caption"),
-                title = photo:getFormattedMetadata("title"),
-                keywords = MetadataManager.removeTopLevelKeyword(
-                    MetadataManager.getPhotoKeywordHierarchy(photo),
-                    prefs.topLevelKeyword
-                ),
-                alt_text = photo:getFormattedMetadata("altTextAccessibility"),
-                ai_rundate = safePluginProperty(photo, "aiLastRun") or ""
-            }
+            local metadata = backendImportBase(backendData)
+            metadata.uuid = uuid
+
+            setMetadataField(metadata, "filename", filename)
+            setMetadataField(metadata, "capture_time", catalogMetadata.capture_time)
+            setMetadataField(metadata, "caption", photo:getFormattedMetadata("caption"))
+            setMetadataField(metadata, "title", photo:getFormattedMetadata("title"))
+            setMetadataField(metadata, "keywords", MetadataManager.removeTopLevelKeyword(
+                MetadataManager.getPhotoKeywordHierarchy(photo),
+                prefs.topLevelKeyword
+            ))
+            setMetadataField(metadata, "alt_text", photo:getFormattedMetadata("altTextAccessibility"))
+
+            local aiRunDate = textValue(safePluginProperty(photo, "aiLastRun"))
+            setMetadataField(metadata, "ai_rundate", aiRunDate)
 
             if nonEmpty(aiModel) then
-                metadata.ai_model = aiModel
+                setMetadataField(metadata, "ai_model", aiModel)
             end
 
             if nonEmpty(provider) then
-                metadata.provider = provider
+                setMetadataField(metadata, "provider", provider)
             end
 
             if catalogMetadata.exif then
