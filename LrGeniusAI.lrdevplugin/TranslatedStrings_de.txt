@@ -320,6 +320,7 @@
 "$$$/lrc-ai-assistant/AIMetadataProvider/aiModel=KI-Modell"
 "$$$/lrc-ai-assistant/AIMetadataProvider/aiProvider=KI-Anbieter"
 "$$$/lrc-ai-assistant/AIMetadataProvider/backendFilename=Backend-Dateiname"
+"$$$/lrc-ai-assistant/AIMetadataProvider/backendPayload=Backend-Nutzdaten"
 "$$$/lrc-ai-assistant/AIMetadataProvider/photoContext=Fotokontext"
 "$$$/LrGeniusAI/Scope/Selected=Ausgewählte Fotos"
 "$$$/LrGeniusAI/Scope/View=Aktuelle Ansicht"

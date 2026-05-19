@@ -20,3 +20,4 @@
 "$$$/LrGeniusAI/ServerStats/windowTitle=Statut du serveur d'index de recherche"
 "$$$/lrc-ai-assistant/AIMetadataProvider/aiProvider=Fournisseur IA"
 "$$$/lrc-ai-assistant/AIMetadataProvider/backendFilename=Nom de fichier backend"
+"$$$/lrc-ai-assistant/AIMetadataProvider/backendPayload=Payload backend"

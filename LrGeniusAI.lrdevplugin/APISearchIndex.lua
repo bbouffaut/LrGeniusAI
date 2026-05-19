@@ -146,6 +146,41 @@ local function backendCacheKey(uuid)
     return nil
 end
 
+local function encodeBackendPayload(data)
+    if type(data) ~= "table" then
+        return nil
+    end
+
+    local success, encoded = pcall(function()
+        return JSON:encode(data)
+    end)
+
+    if success then
+        return textValue(encoded)
+    end
+
+    log:warn("Failed to encode backend payload: " .. tostring(encoded))
+    return nil
+end
+
+local function decodeBackendPayload(payload)
+    local text = textValue(payload)
+    if not text then
+        return nil
+    end
+
+    local success, decoded = pcall(function()
+        return JSON:decode(text)
+    end)
+
+    if success and type(decoded) == "table" then
+        return decoded
+    end
+
+    log:warn("Failed to decode backend payload: " .. tostring(decoded))
+    return nil
+end
+
 local function rememberBackendPhotoData(uuid, data)
     if type(data) ~= "table" then
         return
@@ -155,9 +190,63 @@ local function rememberBackendPhotoData(uuid, data)
     if key then
         backendPhotoDataByUuid[key] = Util.deepcopy(data)
     end
+
+    local payload = encodeBackendPayload(data)
+    if not key or not payload then
+        return
+    end
+
+    local prefsOk, prefsErr = pcall(function()
+        local payloads = prefs.backendPayloadByUuid
+        if type(payloads) ~= "table" then
+            payloads = {}
+        end
+        payloads[key] = payload
+        prefs.backendPayloadByUuid = payloads
+    end)
+    if not prefsOk then
+        log:warn("Failed to store backend payload in prefs: " .. tostring(prefsErr))
+    end
+
+    local writeOk, writeErr = LrTasks.pcall(function()
+        local catalog = LrApplication.activeCatalog()
+        local photo = catalog and catalog:findPhotoByUuid(key)
+        if photo then
+            catalog:withPrivateWriteAccessDo(function()
+                photo:setPropertyForPlugin(_PLUGIN, "backendPayload", payload)
+            end, Defaults.catalogWriteAccessOptions)
+        end
+    end)
+    if not writeOk then
+        log:warn("Failed to store backend payload on photo: " .. tostring(writeErr))
+    end
 end
 
-local function backendPhotoDataForUuid(uuid, backendDataByUuid)
+local function persistedBackendPhotoData(uuid, photo)
+    local key = backendCacheKey(uuid)
+    if not key then
+        return nil
+    end
+
+    local prefsPayload = nil
+    local prefsOk, prefsErr = pcall(function()
+        if type(prefs.backendPayloadByUuid) == "table" then
+            prefsPayload = prefs.backendPayloadByUuid[key]
+        end
+    end)
+    if not prefsOk then
+        log:warn("Failed to read backend payload from prefs: " .. tostring(prefsErr))
+    end
+
+    local prefsData = decodeBackendPayload(prefsPayload)
+    if prefsData then
+        return prefsData
+    end
+
+    return decodeBackendPayload(safePluginProperty(photo, "backendPayload"))
+end
+
+local function backendPhotoDataForUuid(uuid, backendDataByUuid, photo)
     local key = backendCacheKey(uuid)
     if not key then
         return nil
@@ -167,7 +256,11 @@ local function backendPhotoDataForUuid(uuid, backendDataByUuid)
         return backendDataByUuid[key]
     end
 
-    return backendPhotoDataByUuid[key]
+    if type(backendPhotoDataByUuid[key]) == "table" then
+        return backendPhotoDataByUuid[key]
+    end
+
+    return persistedBackendPhotoData(uuid, photo)
 end
 
 local function leafName(path)
@@ -1535,7 +1628,7 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
             end
 
             local uuid = safeRawMetadata(photo, "uuid") or ""
-            local backendData = backendPhotoDataForUuid(uuid, options.backendDataByUuid)
+            local backendData = backendPhotoDataForUuid(uuid, options.backendDataByUuid, photo)
             local catalogMetadata = catalogPhotoMetadata(photo, catalogMetadataLookup)
 
             local filename = backendTextField(backendData, { "filename", "fileName" })

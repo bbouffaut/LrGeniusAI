@@ -302,6 +302,7 @@
 "$$$/lrc-ai-assistant/AIMetadataProvider/aiModel=AI Model"
 "$$$/lrc-ai-assistant/AIMetadataProvider/aiProvider=AI Provider"
 "$$$/lrc-ai-assistant/AIMetadataProvider/backendFilename=Backend Filename"
+"$$$/lrc-ai-assistant/AIMetadataProvider/backendPayload=Backend Payload"
 "$$$/lrc-ai-assistant/AIMetadataProvider/photoContext=Photo Context"
 "$$$/LrGeniusAI/Scope/Selected=Selected Photos"
 "$$$/LrGeniusAI/Scope/View=Current View"
