@@ -18,3 +18,5 @@
 "$$$/LrGeniusAI/ManageIndexTask/NoMissingPhotosMessage=Aucune photo nouvelle ou non évaluée trouvée."
 "$$$/LrGeniusAI/AdvancedSearchTask/collectionSetName=Résultats de recherche"
 "$$$/LrGeniusAI/ServerStats/windowTitle=Statut du serveur d'index de recherche"
+"$$$/lrc-ai-assistant/AIMetadataProvider/aiProvider=Fournisseur IA"
+"$$$/lrc-ai-assistant/AIMetadataProvider/backendFilename=Nom de fichier backend"

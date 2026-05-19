@@ -31,6 +31,22 @@ return {
             browsable = true,
         },
         {
+            id = 'aiProvider',
+            title = LOC "$$$/lrc-ai-assistant/AIMetadataProvider/aiProvider=AI provider",
+            dataType = 'string',
+            readOnly = true,
+            searchable = true,
+            browsable = true,
+        },
+        {
+            id = 'backendFilename',
+            title = LOC "$$$/lrc-ai-assistant/AIMetadataProvider/backendFilename=Backend filename",
+            dataType = 'string',
+            readOnly = true,
+            searchable = true,
+            browsable = true,
+        },
+        {
             id = 'photoContext',
             title = LOC "$$$/lrc-ai-assistant/AIMetadataProvider/photoContext=Photo context",
             dataType = 'string',
@@ -48,7 +64,7 @@ return {
         },
     },
 
-    schemaVersion = 23,
+    schemaVersion = 24,
 
     updateFromEarlierSchemaVersion = function (catalog, previousSchemaVersion, progressScope)
         safeSchemaLog("updateFromEarlierSchemaVersion: " .. tostring(previousSchemaVersion))

@@ -646,6 +646,46 @@ local function aiModelValue(options, photo)
     return ""
 end
 
+local function providerFromModelKey(modelKey)
+    local text = textValue(modelKey)
+    if not text then
+        return nil
+    end
+
+    local sep = string.find(text, "::", 1, true)
+    if sep and sep > 1 then
+        return string.sub(text, 1, sep - 1)
+    end
+
+    return nil
+end
+
+local function providerValue(options, photo)
+    options = options or {}
+
+    if nonEmpty(options.provider) then
+        return tostring(options.provider)
+    end
+
+    local catalogAiProvider = safePluginProperty(photo, "aiProvider")
+    if nonEmpty(catalogAiProvider) then
+        return tostring(catalogAiProvider)
+    end
+
+    if photo == nil then
+        local provider = providerFromModelKey(prefs.modelKey)
+        if nonEmpty(provider) then
+            return tostring(provider)
+        end
+
+        if nonEmpty(prefs.ai) then
+            return tostring(prefs.ai)
+        end
+    end
+
+    return ""
+end
+
 local function addMimeValue(mimeChunks, name, value)
     if value == nil then
         value = ""
@@ -857,8 +897,9 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
     addMimeValue(mimeChunks, "capture_time", captureTimeValue)
     addMimeValue(mimeChunks, "ai_model", aiModelValue(options))
 
-    if options.provider then
-        table.insert(mimeChunks, { name = "provider", value = options.provider })
+    local provider = providerValue(options)
+    if nonEmpty(provider) then
+        table.insert(mimeChunks, { name = "provider", value = provider })
     end
 
     if options.model then
@@ -1242,6 +1283,9 @@ function SearchIndexAPI.analyzeAndIndexSelectedPhotos(selectedPhotos, progressSc
                         photoOptions.filename = filename
                         photoOptions.capture_time = catalogMetadata.capture_time
                         photoOptions.ai_model = aiModelValue(photoOptions, photo)
+                        if not nonEmpty(photoOptions.provider) then
+                            photoOptions.provider = providerValue(photoOptions, photo)
+                        end
 
                         if catalogMetadata.exif then
                             photoOptions.exif = catalogMetadata.exif
@@ -1396,11 +1440,18 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
             end
 
             local catalogMetadata = catalogPhotoMetadata(photo, catalogMetadataLookup)
+            local filename = catalogMetadata.filename
+            local backendFilename = safePluginProperty(photo, "backendFilename")
+            if not nonEmpty(filename) and nonEmpty(backendFilename) then
+                filename = tostring(backendFilename)
+            end
+
+            local aiModel = aiModelValue(nil, photo)
+            local provider = providerValue(nil, photo)
             local metadata = {
                 uuid = safeRawMetadata(photo, "uuid") or "",
-                filename = catalogMetadata.filename,
+                filename = filename or "",
                 capture_time = catalogMetadata.capture_time,
-                ai_model = aiModelValue(nil, photo),
                 caption = photo:getFormattedMetadata("caption"),
                 title = photo:getFormattedMetadata("title"),
                 keywords = MetadataManager.removeTopLevelKeyword(
@@ -1410,6 +1461,14 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
                 alt_text = photo:getFormattedMetadata("altTextAccessibility"),
                 ai_rundate = safePluginProperty(photo, "aiLastRun") or ""
             }
+
+            if nonEmpty(aiModel) then
+                metadata.ai_model = aiModel
+            end
+
+            if nonEmpty(provider) then
+                metadata.provider = provider
+            end
 
             if catalogMetadata.exif then
                 metadata.exif = catalogMetadata.exif
@@ -1421,7 +1480,9 @@ function SearchIndexAPI.importMetadataFromCatalog(photosToProcess, progressScope
                 ", exif_source=" .. tostring(catalogMetadata.exif_source) ..
                 ", filename_source=" .. tostring(catalogMetadata.filename_source) ..
                 ", capture_time_source=" .. tostring(catalogMetadata.capture_time_source) ..
-                ", capture_time=" .. tostring(catalogMetadata.capture_time)
+                ", capture_time=" .. tostring(catalogMetadata.capture_time) ..
+                ", ai_model=" .. tostring(metadata.ai_model) ..
+                ", provider=" .. tostring(metadata.provider)
             )
 
             table.insert(metadataBatch, metadata)

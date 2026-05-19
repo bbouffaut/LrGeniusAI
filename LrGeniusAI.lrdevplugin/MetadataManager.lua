@@ -4,7 +4,25 @@
 MetadataManager = {}
 
 local function isBlank(value)
-    return value == nil or Util.trim(tostring(value)) == ""
+    return value == nil or type(value) == "table" or Util.trim(tostring(value)) == ""
+end
+
+local function nonEmpty(value)
+    return not isBlank(value)
+end
+
+local function providerFromModelKey(modelKey)
+    if not nonEmpty(modelKey) then
+        return nil
+    end
+
+    local text = Util.trim(tostring(modelKey))
+    local sep = string.find(text, "::", 1, true)
+    if sep and sep > 1 then
+        return string.sub(text, 1, sep - 1)
+    end
+
+    return nil
 end
 
 local function mergeText(catalogValue, backendValue, separator)
@@ -364,11 +382,34 @@ function MetadataManager.applyMetadata(photo, response, validatedData, options)
         end, Defaults.catalogWriteAccessOptions)
     end
 
-    if response.ai_model then
+    local backendFilename = response.filename
+    if not nonEmpty(backendFilename) and type(response.metadata) == "table" then
+        backendFilename = response.metadata.filename
+    end
+
+    local provider = response.provider
+    if not nonEmpty(provider) and type(response.metadata) == "table" then
+        provider = response.metadata.provider
+    end
+    if not nonEmpty(provider) then
+        provider = providerFromModelKey(response.ai_model)
+    end
+
+    if nonEmpty(response.ai_model) or nonEmpty(response.ai_rundate) or nonEmpty(provider) or nonEmpty(backendFilename) then
         catalog:withPrivateWriteAccessDo(function()
-            log:trace("Saving AI model to catalog")
-            photo:setPropertyForPlugin(_PLUGIN, "aiModel", tostring(response.ai_model))
-            photo:setPropertyForPlugin(_PLUGIN, "aiLastRun", tostring(response.ai_rundate or ""))
+            log:trace("Saving backend metadata fields to catalog")
+            if nonEmpty(response.ai_model) then
+                photo:setPropertyForPlugin(_PLUGIN, "aiModel", tostring(response.ai_model))
+            end
+            if nonEmpty(response.ai_rundate) then
+                photo:setPropertyForPlugin(_PLUGIN, "aiLastRun", tostring(response.ai_rundate))
+            end
+            if nonEmpty(provider) then
+                photo:setPropertyForPlugin(_PLUGIN, "aiProvider", tostring(provider))
+            end
+            if nonEmpty(backendFilename) then
+                photo:setPropertyForPlugin(_PLUGIN, "backendFilename", tostring(backendFilename))
+            end
         end, Defaults.catalogWriteAccessOptions)
     end
 end
