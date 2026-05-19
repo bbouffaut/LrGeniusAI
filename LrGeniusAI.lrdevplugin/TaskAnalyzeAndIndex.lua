@@ -22,7 +22,7 @@ local function showAnalyzeAndIndexDialog(ctx)
     props.enableEmbeddings = prefs.enableEmbeddings ~= false -- default true
     props.enableMetadata = prefs.enableMetadata ~= false -- default true
     props.enableImportBeforeIndex = prefs.enableImportBeforeIndex or false
-    props.enableQuality = false 
+    props.enableQuality = prefs.enableQuality or false
     props.regenerateMetadata = prefs.regenerateMetadata or false
     
     props.promptTitles = {}
@@ -208,6 +208,12 @@ local function showAnalyzeAndIndexDialog(ctx)
                 f:checkbox {
                     value = bind 'enableMetadata',
                     title = LOC "$$$/LrGeniusAI/AnalyzeAndIndex/EnableMetadata=Generate AI metadata",
+                },
+            },
+            f:row {
+                f:checkbox {
+                    value = bind 'enableQuality',
+                    title = LOC "$$$/LrGeniusAI/AnalyzeAndIndex/EnableQuality=Analyze photo quality",
                 },
             },
             f:row {
@@ -718,13 +724,13 @@ LrTasks.startAsyncTask(function()
                         break
                     end
 
-                elseif props.enableMetadata and response and response.metadata then
-                    -- Directly save generated metadata without validation
+                elseif response and ((props.enableMetadata and response.metadata) or (props.enableQuality and response.quality)) then
+                    -- Directly save generated data without validation
                     MetadataManager.applyMetadata(photo, response, nil, {
-                        applyKeywords = props.generateKeywords,
-                        applyTitle = props.generateTitle,
-                        applyCaption = props.generateCaption,
-                        applyAltText = props.generateAltText,
+                        applyKeywords = props.enableMetadata and props.generateKeywords,
+                        applyTitle = props.enableMetadata and props.generateTitle,
+                        applyCaption = props.enableMetadata and props.generateCaption,
+                        applyAltText = props.enableMetadata and props.generateAltText,
                         applyQuality = props.enableQuality,
                         useTopLevelKeyword = props.useTopLevelKeyword,
                         topLevelKeyword = props.topLevelKeyword,
