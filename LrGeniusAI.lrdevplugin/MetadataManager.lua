@@ -408,12 +408,14 @@ function MetadataManager.applyMetadata(photo, response, validatedData, options)
         local topKeyword = nil
         if prefs.useKeywordHierarchy and options.useTopLevelKeyword then
             catalog:withWriteAccessDo("$$$/lrc-ai-assistant/AnalyzeImageTask/saveTopKeyword=Save AI generated keywords", function()
-                topKeyword = catalog:createKeyword(options.topLevelKeyword or "LrGeniusAI", { Defaults.topLevelKeywordSynonym }, false, nil, true)
+                local topLevelKeyword = metadataTextValue(options.topLevelKeyword) or "LrGeniusAI"
+                topKeyword = catalog:createKeyword(topLevelKeyword, { Defaults.topLevelKeywordSynonym }, false, nil, true)
                 photo:addKeyword(topKeyword) -- Add top-level keyword to photo. To see the number of tagged photos in keyword list (Gerald Uhl)
             end)
             -- Keep track of used top-level keywords
-            if not Util.table_contains(prefs.knownTopLevelKeywords, options.topLevelKeyword) then
-                table.insert(prefs.knownTopLevelKeywords, options.topLevelKeyword)
+            local topLevelKeyword = metadataTextValue(options.topLevelKeyword) or "LrGeniusAI"
+            if not Util.table_contains(prefs.knownTopLevelKeywords, topLevelKeyword) then
+                table.insert(prefs.knownTopLevelKeywords, topLevelKeyword)
             end
         end
         catalog:withWriteAccessDo("$$$/lrc-ai-assistant/AnalyzeImageTask/saveTopKeyword=Save AI generated keywords", function()
@@ -446,22 +448,25 @@ function MetadataManager.addKeywordRecursively(photo, keywordSubTable, parent)
     for key, value in pairs(keywordSubTable) do
         -- log:trace("Processing keyword key: " .. tostring(key) .. " value: " .. tostring(value))
         local keyword
-        if type(key) == 'string' and key ~= "" and key ~= "None" and key ~= "none" and prefs.useKeywordHierarchy then
+        if type(value) == 'table' then
+            if type(key) == 'string' and key ~= "" and key ~= "None" and key ~= "none" and prefs.useKeywordHierarchy then
+                keyword = photo.catalog:createKeyword(key, {}, false, parent, true)
+            end
+            MetadataManager.addKeywordRecursively(photo, value, keyword or parent)
+        elseif type(key) == 'string' and key ~= "" and key ~= "None" and key ~= "none" and prefs.useKeywordHierarchy then
             keyword = photo.catalog:createKeyword(key, {}, false, parent, true)
         elseif type(key) == 'number' and value and value ~= "" and value ~= "None" and value ~= "none" then
             local currentParent = prefs.useKeywordHierarchy and parent or nil
-            if not Util.table_contains(addKeywords, value) then
-                if value == "Ollama" or value == "LMStudio" or value == "Google Gemini" or value == "ChatGPT" or value == "Mistral AI" or value == "Anthropic" or value == prefs.topLevelKeyword then
-                    log:trace("Skipping keyword: " .. tostring(value) .. " as it is reserved.")
+            local keywordName = tostring(value)
+            if keywordName ~= "" and not Util.table_contains(addKeywords, keywordName) then
+                if keywordName == "Ollama" or keywordName == "LMStudio" or keywordName == "Google Gemini" or keywordName == "ChatGPT" or keywordName == "Mistral AI" or keywordName == "Anthropic" or keywordName == prefs.topLevelKeyword then
+                    log:trace("Skipping keyword: " .. keywordName .. " as it is reserved.")
                 else
-                    keyword = photo.catalog:createKeyword(value, {}, true, currentParent, true)
+                    keyword = photo.catalog:createKeyword(keywordName, {}, true, currentParent, true)
                     photo:addKeyword(keyword)
-                    table.insert(addKeywords, value)
+                    table.insert(addKeywords, keywordName)
                 end
             end
-        end
-        if type(value) == 'table' then
-            MetadataManager.addKeywordRecursively(photo, value, keyword)
         end
     end
 end
