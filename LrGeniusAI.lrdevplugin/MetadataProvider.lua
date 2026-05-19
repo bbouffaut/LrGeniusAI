@@ -48,7 +48,7 @@ return {
         },
     },
 
-    schemaVersion = 23,
+    schemaVersion = 26,
 
     updateFromEarlierSchemaVersion = function (catalog, previousSchemaVersion, progressScope)
         safeSchemaLog("updateFromEarlierSchemaVersion: " .. tostring(previousSchemaVersion))
