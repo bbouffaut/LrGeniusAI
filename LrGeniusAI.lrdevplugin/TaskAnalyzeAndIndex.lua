@@ -542,20 +542,24 @@ LrTasks.startAsyncTask(function()
             provider = providerFromKey,
             model = modelFromKey,
             language = props.language,
-            generate_keywords = props.generateKeywords,
-            generate_caption = props.generateCaption,
-            generate_title = props.generateTitle,
-            generate_alt_text = props.generateAltText,
-            submit_gps = props.submitGPS,
-            submit_keywords = props.submitKeywords,
-            submit_folder_names = props.submitFolderName,
-            submit_user_context = props.showPhotoContextDialog,
             enableMetadata = props.enableMetadata,
             enableQuality = props.enableQuality,
             replace_ss = props.replaceSS,
-            regenerate_metadata = props.regenerateMetadata,
-            prompt = props.selectedPrompt,
+            regenerate_metadata = props.enableMetadata and props.regenerateMetadata or false,
+            prompt = props.enableMetadata and props.selectedPrompt or nil,
         }
+
+        if props.enableMetadata then
+            options.generate_keywords = props.generateKeywords
+            options.generate_caption = props.generateCaption
+            options.generate_title = props.generateTitle
+            options.generate_alt_text = props.generateAltText
+            options.submit_gps = props.submitGPS
+            options.submit_keywords = props.submitKeywords
+            options.submit_folder_names = props.submitFolderName
+            options.submit_user_context = props.showPhotoContextDialog
+        end
+
         -- Add API key for cloud providers if configured
         if providerFromKey == 'chatgpt' and prefs then
             log:trace("Added ChatGPT API key to options")

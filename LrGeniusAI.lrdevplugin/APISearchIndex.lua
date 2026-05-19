@@ -959,7 +959,7 @@ function SearchIndexAPI.analyzeAndIndexPhoto(uuid, filepath, options)
         table.insert(mimeChunks, { name = "folder_names", value = options.folder_names })
     end
 
-    if options.prompt then
+    if options.prompt and not Util.nilOrEmpty(options.prompt) then
         table.insert(mimeChunks, { name = "prompt", value = options.prompt })
     end
 
