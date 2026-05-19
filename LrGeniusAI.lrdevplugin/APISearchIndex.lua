@@ -156,7 +156,7 @@ local function normalizedMetadataKey(key)
 end
 
 local function metadataTableValue(metadata, key)
-    if type(metadata) ~= "table" then
+    if type(metadata) ~= "table" or key == nil then
         return nil
     end
 
@@ -164,7 +164,12 @@ local function metadataTableValue(metadata, key)
         return metadata[key]
     end
 
-    local loweredKey = string.lower(key)
+    local keyText = tostring(key)
+    if metadata[keyText] ~= nil then
+        return metadata[keyText]
+    end
+
+    local loweredKey = string.lower(keyText)
     local normalizedKey = normalizedMetadataKey(key)
     for metadataKey, value in pairs(metadata) do
         if type(metadataKey) == "string" then

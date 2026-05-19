@@ -7,9 +7,78 @@ local function isBlank(value)
     return value == nil or type(value) == "table" or Util.trim(tostring(value)) == ""
 end
 
+local function metadataTextValue(value, includeScalar)
+    if value == nil then
+        return nil
+    end
+    if includeScalar == nil then
+        includeScalar = true
+    end
+
+    local valueType = type(value)
+    if valueType == "string" then
+        return value
+    end
+    if valueType == "number" or valueType == "boolean" then
+        if includeScalar then
+            return tostring(value)
+        end
+        return nil
+    end
+    if valueType ~= "table" then
+        return tostring(value)
+    end
+
+    local preferredKeys = {
+        "value",
+        "text",
+        "content",
+        "title",
+        "caption",
+        "alt_text",
+        "altText",
+        "description",
+        "default",
+        "en",
+    }
+
+    for _, key in ipairs(preferredKeys) do
+        local text = metadataTextValue(value[key], true)
+        if text ~= nil and Util.trim(text) ~= "" then
+            return text
+        end
+    end
+
+    local keys = {}
+    for key in pairs(value) do
+        table.insert(keys, key)
+    end
+    table.sort(keys, function(a, b)
+        return tostring(a) < tostring(b)
+    end)
+
+    local values = {}
+    for _, key in ipairs(keys) do
+        local text = metadataTextValue(value[key], false)
+        if text ~= nil and Util.trim(text) ~= "" then
+            table.insert(values, text)
+        end
+    end
+
+    if #values > 0 then
+        return table.concat(values, "\n")
+    end
+
+    return nil
+end
+
+local function metadataTextOrEmpty(value)
+    return metadataTextValue(value) or ""
+end
+
 local function mergeText(catalogValue, backendValue, separator)
-    local catalogText = Util.trim(tostring(catalogValue or ""))
-    local backendText = Util.trim(tostring(backendValue or ""))
+    local catalogText = Util.trim(metadataTextOrEmpty(catalogValue))
+    local backendText = Util.trim(metadataTextOrEmpty(backendValue))
 
     if catalogText == "" then return backendText end
     if backendText == "" or catalogText == backendText then return catalogText end
@@ -134,22 +203,22 @@ function MetadataManager.hasCatalogMetadataConflict(photo, response, options)
 
     if options.applyTitle ~= false
         and not isBlank(catalogMetadata.title)
-        and not isBlank(backendMetadata.title)
-        and Util.trim(catalogMetadata.title) ~= Util.trim(tostring(backendMetadata.title)) then
+        and not isBlank(metadataTextValue(backendMetadata.title))
+        and Util.trim(catalogMetadata.title) ~= Util.trim(metadataTextOrEmpty(backendMetadata.title)) then
         return true
     end
 
     if options.applyCaption ~= false
         and not isBlank(catalogMetadata.caption)
-        and not isBlank(backendMetadata.caption)
-        and Util.trim(catalogMetadata.caption) ~= Util.trim(tostring(backendMetadata.caption)) then
+        and not isBlank(metadataTextValue(backendMetadata.caption))
+        and Util.trim(catalogMetadata.caption) ~= Util.trim(metadataTextOrEmpty(backendMetadata.caption)) then
         return true
     end
 
     if options.applyAltText ~= false
         and not isBlank(catalogMetadata.alt_text)
-        and not isBlank(backendMetadata.alt_text)
-        and Util.trim(catalogMetadata.alt_text) ~= Util.trim(tostring(backendMetadata.alt_text)) then
+        and not isBlank(metadataTextValue(backendMetadata.alt_text))
+        and Util.trim(catalogMetadata.alt_text) ~= Util.trim(metadataTextOrEmpty(backendMetadata.alt_text)) then
         return true
     end
 
@@ -176,11 +245,11 @@ function MetadataManager.showCatalogMetadataConflictDialog(ctx, photo, response,
 
     local properties = LrBinding.makePropertyTable(ctx)
     properties.catalogTitle = catalogMetadata.title or ""
-    properties.backendTitle = backendMetadata.title or ""
+    properties.backendTitle = metadataTextOrEmpty(backendMetadata.title)
     properties.catalogCaption = catalogMetadata.caption or ""
-    properties.backendCaption = backendMetadata.caption or ""
+    properties.backendCaption = metadataTextOrEmpty(backendMetadata.caption)
     properties.catalogAltText = catalogMetadata.alt_text or ""
-    properties.backendAltText = backendMetadata.alt_text or ""
+    properties.backendAltText = metadataTextOrEmpty(backendMetadata.alt_text)
     properties.catalogKeywords = keywordTableToDisplayString(catalogMetadata.keywords)
     properties.backendKeywords = keywordTableToDisplayString(backendMetadata.keywords)
 
@@ -281,9 +350,9 @@ function MetadataManager.applyMetadata(photo, response, validatedData, options)
 
     response = response or {}
     local metadata = getResponseMetadata(response)
-    local title = metadata.title
-    local caption = metadata.caption
-    local altText = metadata.alt_text
+    local title = metadataTextValue(metadata.title)
+    local caption = metadataTextValue(metadata.caption)
+    local altText = metadataTextValue(metadata.alt_text)
     local keywords = metadata.keywords
 
     local saveTitle = options.applyTitle ~= false
@@ -294,11 +363,11 @@ function MetadataManager.applyMetadata(photo, response, validatedData, options)
     -- If review was done, use the validated data
     if validatedData then
         saveTitle = validatedData.saveTitle and options.applyTitle ~= false
-        title = validatedData.title
+        title = metadataTextValue(validatedData.title)
         saveCaption = validatedData.saveCaption and options.applyCaption ~= false
-        caption = validatedData.caption
+        caption = metadataTextValue(validatedData.caption)
         saveAltText = validatedData.saveAltText and options.applyAltText ~= false
-        altText = validatedData.altText
+        altText = metadataTextValue(validatedData.altText)
         saveKeywords = validatedData.saveKeywords and options.applyKeywords ~= false
         keywords = validatedData.keywords
     end
@@ -407,14 +476,15 @@ function MetadataManager.showValidationDialog(ctx, photo, response, options)
     local share = LrView.share
 
     local metadata = getResponseMetadata(response)
-    local title = metadata.title
-    local caption = metadata.caption
-    local altText = metadata.alt_text
+    local title = metadataTextValue(metadata.title)
+    local caption = metadataTextValue(metadata.caption)
+    local altText = metadataTextValue(metadata.alt_text)
     local keywords = metadata.keywords
+    local keywordHierarchy = type(keywords) == 'table' and keywords or {}
 
     local propertyTable = LrBinding.makePropertyTable(ctx)
     propertyTable.skipFromHere = false
-    propertyTable.keywordsVal = Util.extractAllKeywords(keywords or {})
+    propertyTable.keywordsVal = Util.extractAllKeywords(keywordHierarchy)
     propertyTable.keywordsSel = {}
     propertyTable.title = title or ""
     propertyTable.caption = caption or ""
@@ -562,7 +632,7 @@ function MetadataManager.showValidationDialog(ctx, photo, response, options)
     local results = {}
     local validatedKeywords = {}
     if propertyTable.saveKeywords then
-        validatedKeywords = Util.rebuildTableFromKeywords(keywords, propertyTable.keywordsVal, propertyTable.keywordsSel)
+        validatedKeywords = Util.rebuildTableFromKeywords(keywordHierarchy, propertyTable.keywordsVal, propertyTable.keywordsSel)
     end
 
     results.keywords = validatedKeywords
