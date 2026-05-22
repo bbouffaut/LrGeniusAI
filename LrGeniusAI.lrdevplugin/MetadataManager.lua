@@ -335,6 +335,7 @@ function MetadataManager.showCatalogMetadataConflictDialog(ctx, photo, response,
     properties.backendAltText = metadataTextOrEmpty(backendMetadata.alt_text)
     properties.catalogKeywords = keywordTableToDisplayString(catalogMetadata.keywords)
     properties.backendKeywords = keywordTableToDisplayString(backendMetadata.keywords)
+    properties.applyForAllNext = false
 
     local function valueRows(prefix)
         return f:column {
@@ -378,6 +379,15 @@ function MetadataManager.showCatalogMetadataConflictDialog(ctx, photo, response,
                 valueRows('backend'),
             },
         },
+        f:row {
+            margin_vertical = 10,
+            f:checkbox {
+                value = bind 'applyForAllNext',
+            },
+            f:static_text {
+                title = LOC "$$$/LrGeniusAI/RetrieveMetadata/Conflict/ApplyForAllNext=Apply for all next photos",
+            },
+        },
     }
 
     local result = LrDialogs.presentModalDialog({
@@ -390,12 +400,12 @@ function MetadataManager.showCatalogMetadataConflictDialog(ctx, photo, response,
     })
 
     if result == "ok" then
-        return "backend"
+        return "backend", properties.applyForAllNext
     elseif result == "other" then
-        return "merge"
+        return "merge", properties.applyForAllNext
     end
 
-    return "catalog"
+    return "catalog", properties.applyForAllNext
 end
 
 function MetadataManager.mergeCatalogAndBackendMetadata(photo, response, options)

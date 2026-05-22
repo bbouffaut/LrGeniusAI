@@ -1572,6 +1572,71 @@ local function headersForLog(hdrs)
     return tostring(hdrs or "unknown")
 end
 
+local RETRYABLE_HTTP_ERROR_CODES = {
+    networkConnectionLost = true,
+    timedOut = true,
+    cannotConnectToHost = true,
+    cannotFindHost = true,
+    dnsLookupFailed = true,
+}
+
+local RETRYABLE_NATIVE_CODES = {
+    [-1005] = true, -- NSURLErrorNetworkConnectionLost
+    [-1001] = true, -- NSURLErrorTimedOut
+    [-1004] = true, -- NSURLErrorCannotConnectToHost
+    [-1003] = true, -- NSURLErrorCannotFindHost
+}
+
+local function retryAttemptCount()
+    local attempts = tonumber(prefs and prefs.httpRetryAttempts) or 3
+    attempts = math.floor(attempts)
+    if attempts < 1 then
+        return 1
+    end
+    if attempts > 5 then
+        return 5
+    end
+    return attempts
+end
+
+local function retryDelaySeconds(attempt)
+    return attempt
+end
+
+local function httpTransportError(hdrs)
+    if type(hdrs) ~= "table" or hdrs.error == nil then
+        return nil
+    end
+
+    if type(hdrs.error) == "table" then
+        return hdrs.error
+    end
+
+    return {
+        errorCode = tostring(hdrs.error),
+        name = tostring(hdrs.error),
+    }
+end
+
+local function isRetryableTransportFailure(result, hdrs)
+    if httpStatus(hdrs) ~= nil then
+        return false
+    end
+
+    local err = httpTransportError(hdrs)
+    if err == nil then
+        return result == nil and hdrs == nil
+    end
+
+    local errorCode = tostring(err.errorCode or err.code or "")
+    if RETRYABLE_HTTP_ERROR_CODES[errorCode] then
+        return true
+    end
+
+    local nativeCode = tonumber(err.nativeCode or err.native_code)
+    return nativeCode ~= nil and RETRYABLE_NATIVE_CODES[nativeCode] == true
+end
+
 local function decodeResponseBody(result)
     if result == nil or #result == 0 then
         return nil
@@ -1604,79 +1669,99 @@ local function successfulHttpResponse(status, hdrs, decoded)
     return not hasHttpTransportError(hdrs) and responseBodyIsSuccess(decoded)
 end
 
-_requestMultipart = function(url, mimeChunks, timeout)
-    local result, hdrs = LrHttp.postMultipart(url, mimeChunks, serverRequestHeaders(), timeout)
+local function apiRequestErrorMessage(result, hdrs, decoded)
     local status = httpStatus(hdrs)
-    local decoded = decodeResponseBody(result)
-
-    if successfulHttpResponse(status, hdrs, decoded) then
-        if decoded ~= nil then
-            if status == nil then
-                log:warn("HTTP status missing from Lightroom response headers; accepting successful response body. Headers: " .. headersForLog(hdrs))
-            end
-            return decoded
+    local err_msg = "API request failed. HTTP status: " .. tostring(status or 'unknown') .. " Headers: " .. headersForLog(hdrs)
+    if result and #result > 0 then
+        local decoded_err = decoded
+        if decoded_err and decoded_err.error then
+            err_msg = err_msg .. " - " .. tostring(decoded_err.error)
+        else
+            err_msg = err_msg .. " Response: " .. result
         end
-        return {} -- Return an empty table for successful but empty responses
-    else
-        local err_msg = "API request failed. HTTP status: " .. tostring(status or 'unknown') .. " Headers: " .. headersForLog(hdrs)
-        if result and #result > 0 then
-            local decoded_err = decoded
-            if decoded_err and decoded_err.error then
-                err_msg = err_msg .. " - " .. decoded_err.error
-            else
-                err_msg = err_msg .. " Response: " .. result
-            end
-        end
-        log:error(err_msg)
-        return nil, err_msg
     end
+    return err_msg
+end
+
+local function sendHttpRequestWithRetries(label, sendRequest)
+    local attempts = retryAttemptCount()
+    local lastResult, lastHdrs, lastDecoded
+
+    for attempt = 1, attempts do
+        local ok, result, hdrs = LrTasks.pcall(sendRequest)
+        if not ok then
+            local requestError = result
+            result = nil
+            hdrs = {
+                error = {
+                    errorCode = "lightroomHttpException",
+                    name = tostring(requestError),
+                },
+            }
+        end
+
+        local status = httpStatus(hdrs)
+        local decoded = decodeResponseBody(result)
+
+        if successfulHttpResponse(status, hdrs, decoded) then
+            if decoded ~= nil then
+                if status == nil then
+                    log:warn("HTTP status missing from Lightroom response headers; accepting successful response body. Headers: " .. headersForLog(hdrs))
+                end
+                return decoded
+            end
+            return {} -- Return an empty table for successful but empty responses
+        end
+
+        lastResult = result
+        lastHdrs = hdrs
+        lastDecoded = decoded
+
+        if attempt < attempts and isRetryableTransportFailure(result, hdrs) then
+            local delaySeconds = retryDelaySeconds(attempt)
+            log:warn(
+                label .. " failed with retryable transport error on attempt " ..
+                tostring(attempt) .. "/" .. tostring(attempts) ..
+                "; retrying in " .. tostring(delaySeconds) .. "s. Headers: " .. headersForLog(hdrs)
+            )
+            LrTasks.sleep(delaySeconds)
+        else
+            break
+        end
+    end
+
+    local err_msg = apiRequestErrorMessage(lastResult, lastHdrs, lastDecoded)
+    if attempts > 1 and isRetryableTransportFailure(lastResult, lastHdrs) then
+        err_msg = err_msg .. " (after " .. tostring(attempts) .. " attempts)"
+    end
+    log:error(err_msg)
+    return nil, err_msg
+end
+
+_requestMultipart = function(url, mimeChunks, timeout)
+    return sendHttpRequestWithRetries("Multipart API request", function()
+        return LrHttp.postMultipart(url, mimeChunks, serverRequestHeaders(), timeout)
+    end)
 end
 
 _request = function(method, url, body, timeout)
-    local result, hdrs
     local bodyString = (body and type(body) == 'table') and JSON:encode(body) or nil
     local headers = serverRequestHeaders({
         { field = "Content-Type", value = "application/json" },
     })
 
-    if method == 'GET' then
-        result, hdrs = LrHttp.get(url, serverRequestHeaders(), timeout)
-    elseif method == 'POST' then
-        result, hdrs = LrHttp.post(url, bodyString or "", headers, 'POST', timeout)
-    elseif method == 'PUT' then
-        result, hdrs = LrHttp.post(url, bodyString or "", headers, 'PUT', timeout)
-    elseif method == 'DELETE' then
-        result, hdrs = LrHttp.post(url, bodyString or "", headers, 'DELETE', timeout)
-    else
+    if method ~= 'GET' and method ~= 'POST' and method ~= 'PUT' and method ~= 'DELETE' then
         local err = "Unsupported HTTP method: " .. method
         log:error(err)
         return nil, err
     end
 
-    local status = httpStatus(hdrs)
-    local decoded = decodeResponseBody(result)
-
-    if successfulHttpResponse(status, hdrs, decoded) then
-        if decoded ~= nil then
-            if status == nil then
-                log:warn("HTTP status missing from Lightroom response headers; accepting successful response body. Headers: " .. headersForLog(hdrs))
-            end
-            return decoded
+    return sendHttpRequestWithRetries(method .. " API request", function()
+        if method == 'GET' then
+            return LrHttp.get(url, serverRequestHeaders(), timeout)
         end
-        return {} -- Return an empty table for successful but empty responses
-    else
-        local err_msg = "API request failed. HTTP status: " .. tostring(status or 'unknown') .. " Headers: " .. headersForLog(hdrs)
-        if result and #result > 0 then
-            local decoded_err = decoded
-            if decoded_err and decoded_err.error then
-                err_msg = err_msg .. " - " .. decoded_err.error
-            else
-                err_msg = err_msg .. " Response: " .. result
-            end
-        end
-        log:error(err_msg)
-        return nil, err_msg
-    end
+        return LrHttp.post(url, bodyString or "", headers, method, timeout)
+    end)
 end
 
 

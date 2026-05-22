@@ -216,6 +216,8 @@ LrTasks.startAsyncTask(function()
         local skipCount = 0
         local errorCount = 0
         local skipValidation = false
+        local skipConflict = false
+        local savedConflictChoice = nil
 
         for i, photo in ipairs(photos) do
             if progressScope:isCanceled() then
@@ -254,7 +256,18 @@ LrTasks.startAsyncTask(function()
                     local applyOptions = Util.deepcopy(options)
 
                     if MetadataManager.hasCatalogMetadataConflict(photo, retrievedData, options) then
-                        conflictChoice = MetadataManager.showCatalogMetadataConflictDialog(ctx, photo, retrievedData, options)
+                        if skipConflict and savedConflictChoice then
+                            conflictChoice = savedConflictChoice
+                            log:trace("Silently applying saved conflict choice '" .. conflictChoice .. "' for photo: " .. fileName)
+                        else
+                            local applyForAllNext = false
+                            conflictChoice, applyForAllNext = MetadataManager.showCatalogMetadataConflictDialog(ctx, photo, retrievedData, options)
+                            if applyForAllNext then
+                                skipConflict = true
+                                savedConflictChoice = conflictChoice
+                                log:trace("Will apply conflict choice '" .. conflictChoice .. "' for all next photos")
+                            end
+                        end
 
                         if conflictChoice == "catalog" then
                             skipCount = skipCount + 1
