@@ -62,6 +62,10 @@ if _G.prefs.anthropicApiKey == nil then
     _G.prefs.anthropicApiKey = ""
 end
 
+if _G.prefs.openrouterApiKey == nil then
+    _G.prefs.openrouterApiKey = ""
+end
+
 if _G.prefs.generateTitle == nil then
     _G.prefs.generateTitle = true
 end

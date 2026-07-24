@@ -66,8 +66,9 @@ local function showAnalyzeAndIndexDialog(ctx)
     local geminiKey = (prefs and not Util.nilOrEmpty(prefs.geminiApiKey)) and prefs.geminiApiKey or nil
     local mistralKey = (prefs and not Util.nilOrEmpty(prefs.mistralApiKey)) and prefs.mistralApiKey or nil
     local anthropicKey = (prefs and not Util.nilOrEmpty(prefs.anthropicApiKey)) and prefs.anthropicApiKey or nil
-    
-    local modelsResp = SearchIndexAPI.getModels(openaiKey, geminiKey, mistralKey, anthropicKey)
+    local openrouterKey = (prefs and not Util.nilOrEmpty(prefs.openrouterApiKey)) and prefs.openrouterApiKey or nil
+
+    local modelsResp = SearchIndexAPI.getModels(openaiKey, geminiKey, mistralKey, anthropicKey, openrouterKey)
     if modelsResp and modelsResp.models then
         for provider, list in pairs(modelsResp.models) do
             for _, model in ipairs(list) do
@@ -589,6 +590,13 @@ LrTasks.startAsyncTask(function()
             end
             log:trace("Added Anthropic API key to options")
             options.api_key = prefs.anthropicApiKey
+        elseif providerFromKey == 'openrouter' and prefs then
+            if prefs.openrouterApiKey == nil or prefs.openrouterApiKey == '' then
+                LrDialogs.showError(LOC "$$$/LrGeniusAI/AnalyzeAndIndex/MissingOpenRouterAPIKey=OpenRouter API key is not configured. Please set it in the plugin preferences.")
+                return
+            end
+            log:trace("Added OpenRouter API key to options")
+            options.api_key = prefs.openrouterApiKey
         end
 
         if prefs.useKeywordHierarchy then

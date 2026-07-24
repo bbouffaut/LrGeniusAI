@@ -43,6 +43,7 @@
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/ChatGPTApiKey=ChatGPT API Key"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/MistralApiKey=Mistral AI API Key"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/AnthropicApiKey=Anthropic API Key"
+"$$$/lrc-ai-assistant/PluginInfoDialogSections/OpenRouterApiKey=OpenRouter API Key"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/Logging=Enable Logs"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/aiModel=AI Model to use"
 "$$$/lrc-ai-assistant/PluginInfoDialogSections/alttext=Alt Text"

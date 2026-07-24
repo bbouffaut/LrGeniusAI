@@ -1814,8 +1814,9 @@ end
 -- @param geminiApiKey string|nil Gemini API key for listing Gemini models
 -- @param mistralApiKey string|nil Mistral API key for listing Mistral models
 -- @param anthropicApiKey string|nil Anthropic API key for listing Anthropic models
+-- @param openrouterApiKey string|nil OpenRouter API key for listing OpenRouter models
 -- @return table|nil Response from server with format: { models = { qwen = {...}, ollama = {...}, ... } }
-function SearchIndexAPI.getModels(openaiApiKey, geminiApiKey, mistralApiKey, anthropicApiKey)
+function SearchIndexAPI.getModels(openaiApiKey, geminiApiKey, mistralApiKey, anthropicApiKey, openrouterApiKey)
     local url, urlErr = endpointUrl(ENDPOINTS.MODELS)
     if not url then
         log:error("getModels failed: " .. urlErr)
@@ -1825,7 +1826,8 @@ function SearchIndexAPI.getModels(openaiApiKey, geminiApiKey, mistralApiKey, ant
         openai_apikey = openaiApiKey, 
         gemini_apikey = geminiApiKey,
         mistral_apikey = mistralApiKey,
-        anthropic_apikey = anthropicApiKey
+        anthropic_apikey = anthropicApiKey,
+        openrouter_apikey = openrouterApiKey
     }
     local result, err = _request('POST', url, body)
     if err then
