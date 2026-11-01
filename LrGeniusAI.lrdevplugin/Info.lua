@@ -39,6 +39,10 @@ return {
 			title = LOC "$$$/LrGeniusAI/Menu/ImportMetadata=Push metadata from Catalog to Backend......",
 			file = "TaskImportMetadata.lua",
 		},
+		{
+			title = LOC "$$$/LrGeniusAI/Menu/StyleMatchSpike=Style Match SDK Spike (diagnostics)",
+			file = "StyleMatchSpike.lua",
+		},
 	},
 
 	LrExportMenuItems = {
@@ -57,6 +61,10 @@ return {
 		{
 			title = LOC "$$$/LrGeniusAI/Menu/ImportMetadata=Push metadata from Catalog to Backend......",
 			file = "TaskImportMetadata.lua",
+		},
+		{
+			title = LOC "$$$/LrGeniusAI/Menu/StyleMatchSpike=Style Match SDK Spike (diagnostics)",
+			file = "StyleMatchSpike.lua",
 		},
 	},
 }
