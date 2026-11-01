@@ -3,7 +3,7 @@
 #
 # 1. Rebuilds build/LrGeniusAI.lrplugin from LrGeniusAI.lrdevplugin/ (*.lua).
 # 2. Mirrors the result into the plugin folder Lightroom loads
-#    (/Applications/Adobe Lightroom Classic/LrGeniusAI.lrplugin) with
+#    (Adobe Lightroom Classic.app/Contents/PlugIns/LrGeniusAI.lrplugin) with
 #    rsync --delete, so removed/renamed files never linger in the installed copy.
 #
 # Lightroom reads plugins only at startup: restart (quit/reopen) LRC after this.
@@ -14,7 +14,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${ROOT_DIR}/build"
 PLUGIN_DIR="${BUILD_DIR}/LrGeniusAI.lrplugin"
-ADOBE_PLUGIN_DIR="${ADOBE_PLUGIN_DIR:-/Applications/Adobe Lightroom Classic/LrGeniusAI.lrplugin}"
+ADOBE_PLUGIN_DIR="${ADOBE_PLUGIN_DIR:-/Applications/Adobe Lightroom Classic/Adobe Lightroom Classic.app/Contents/PlugIns/LrGeniusAI.lrplugin}"
 
 echo "Cleaning ${BUILD_DIR}..."
 rm -rf "${BUILD_DIR}"
