@@ -160,6 +160,14 @@ StyleWhitelist.DEFAULT_VALUES = {
     ShadowTint = 0,
     HighlightTint = 0,
     WhiteBalance = "As Shot",
+    -- Local keys are never transferred; these defaults are used to decide whether
+    -- a crop / lens correction actually differs from the as-imported state.
+    CropTop = 0,
+    CropLeft = 0,
+    CropBottom = 1,
+    CropRight = 1,
+    CropAngle = 0,
+    AutoLateralCA = 0,
 }
 
 -- Sets are built once from the lists above.
@@ -317,6 +325,61 @@ function StyleWhitelist.isDefaultValue(key, value)
     return matchesDefault(key, value)
 end
 
+-- Local families that count as one "local correction" each when they differ
+-- from the as-imported state. Orientation is excluded: it is a catalog fact,
+-- not a correction, and is always present with a non-default string value.
+local LOCAL_CORRECTION_PREFIXES = {
+    "Crop",
+    "Perspective",
+    "RetouchInfo",
+    "AutoLateralCA",
+    "Correction",
+}
+
+---
+-- Counts local corrections in a snapshot: one per mask in LocalAdjustments plus
+-- one per touched local family (crop, perspective, retouch, lens/CA).
+-- Local corrections are reported to the user but never transferred.
+-- @param developSettings table Settings as returned by photo:getDevelopSettings().
+-- @return number Count of local corrections.
+--
+function StyleWhitelist.localAdjustmentCount(developSettings)
+    if type(developSettings) ~= "table" then
+        return 0
+    end
+
+    local count = 0
+
+    local masks = developSettings.LocalAdjustments
+    if type(masks) == "table" then
+        for _ in pairs(masks) do
+            count = count + 1
+        end
+    end
+
+    local touchedFamilies = {}
+    for key, value in pairs(developSettings) do
+        if StyleWhitelist.classify(key) == "local"
+            and key ~= "LocalAdjustments"
+            and not matchesDefault(key, value) then
+            local family = "Correction"
+            for _, prefix in ipairs(LOCAL_CORRECTION_PREFIXES) do
+                if startsWith(key, prefix) then
+                    family = prefix
+                    break
+                end
+            end
+            touchedFamilies[family] = true
+        end
+    end
+
+    for _ in pairs(touchedFamilies) do
+        count = count + 1
+    end
+
+    return count
+end
+
 ---
 -- Decides whether a photo has develop edits worth indexing as a style reference.
 -- Style and scene keys are compared against their defaults; local adjustments
@@ -329,12 +392,11 @@ function StyleWhitelist.hasEdits(developSettings)
         return false, 0
     end
 
-    local localCount = 0
+    local localCount = StyleWhitelist.localAdjustmentCount(developSettings)
+
     for _, key in ipairs(sortedKeys(developSettings)) do
         local keyClass = StyleWhitelist.classify(key)
-        if keyClass == "local" then
-            localCount = localCount + 1
-        elseif keyClass ~= nil then
+        if keyClass == "style" or keyClass == "scene" then
             if not matchesDefault(key, developSettings[key]) then
                 return true, localCount
             end
