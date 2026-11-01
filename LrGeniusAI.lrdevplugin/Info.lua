@@ -51,6 +51,10 @@ return {
 			title = LOC "$$$/LrGeniusAI/Menu/ExportStyleMatchManifest=Export Style-Match Manifest...",
 			file = "TaskExportManifest.lua",
 		},
+		{
+			title = LOC "$$$/LrGeniusAI/Menu/StyleMatchIndex=Index for Style Match...",
+			file = "TaskStyleMatchIndex.lua",
+		},
 	},
 
 	LrExportMenuItems = {
@@ -81,6 +85,10 @@ return {
 		{
 			title = LOC "$$$/LrGeniusAI/Menu/ExportStyleMatchManifest=Export Style-Match Manifest...",
 			file = "TaskExportManifest.lua",
+		},
+		{
+			title = LOC "$$$/LrGeniusAI/Menu/StyleMatchIndex=Index for Style Match...",
+			file = "TaskStyleMatchIndex.lua",
 		},
 	},
 }
