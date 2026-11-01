@@ -67,8 +67,36 @@ LrTasks.startAsyncTask(function()
             end
         end
 
-        local photos = PhotoSelector.getPhotosInScope(scope == "selected" and "selected" or "view")
-        if photos == nil or #photos == 0 then
+        local selectedPhotos = PhotoSelector.getPhotosInScope(scope == "selected" and "selected" or "view")
+        if selectedPhotos == nil or #selectedPhotos == 0 then
+            return
+        end
+
+        -- Reject photos without a description BEFORE rendering or uploading
+        -- anything: the style-match index is description-driven, so an empty
+        -- one is a failed photo, not a payload the server should store. A
+        -- failure never stops the run — every remaining photo is still indexed.
+        local photos, failures = {}, {}
+        for _, photo in ipairs(selectedPhotos) do
+            local photoName = tostring(photo:getFormattedMetadata("fileName") or photo.localIdentifier)
+            local ok, hasDescription = LrTasks.pcall(function()
+                return StyleMatchCommon.hasDescription(photo)
+            end)
+            if ok and hasDescription then
+                table.insert(photos, photo)
+            else
+                table.insert(failures, photoName .. ": no description")
+                log:warn("Style Match: skipping " .. photoName .. " (no description)")
+            end
+        end
+
+        if #photos == 0 then
+            log:info("Style Match index: no photo with a description in scope; nothing sent.")
+            LrDialogs.message(
+                LOC "$$$/LrGeniusAI/StyleMatchIndex/NoDescriptionTitle=No photo has a description",
+                LOC("$$$/LrGeniusAI/StyleMatchIndex/NoDescriptionMessage=None of the ^1 photo(s) in the scope has a description, so nothing was indexed. Add a description (Analyze & Index) and try again.", #selectedPhotos),
+                "warning"
+            )
             return
         end
 
@@ -83,8 +111,7 @@ LrTasks.startAsyncTask(function()
         -- the temp folder bounded and makes server-side activity start after
         -- the first batch instead of after the whole set is rendered.
         local BATCH_SIZE = 10
-        local indexed, failed, skipped = 0, 0, 0
-        local failures = {}
+        local indexed, failed, skipped = 0, #failures, 0
 
         for batchStart = 1, #photos, BATCH_SIZE do
             if progressScope:isCanceled() then

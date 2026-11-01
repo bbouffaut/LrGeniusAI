@@ -80,6 +80,15 @@ local function descriptionOf(photo)
     return nil
 end
 
+--- True when the photo carries a non-empty description (AI caption in the
+--- catalog caption field, else the plugin's own photoContext). The style-match
+--- index is description-driven, so photos without one are never sent.
+-- @param photo LrPhoto
+-- @return boolean
+function StyleMatchCommon.hasDescription(photo)
+    return descriptionOf(photo) ~= nil
+end
+
 --- Builds the index payload fields for one photo.
 -- @param photo LrPhoto
 -- @param catalogId string
