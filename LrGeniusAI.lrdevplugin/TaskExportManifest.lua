@@ -85,7 +85,10 @@ local function buildManifestRow(photo, catalogId, previewPath)
     local latitude, longitude = gpsOf(photo)
 
     local developSettings = {}
-    local ok, settings = pcall(function() return photo:getDevelopSettings() end)
+    -- LrTasks.pcall (never plain pcall): getDevelopSettings() yields on LrC
+    -- 15.x; plain pcall dies with "Yielding is not allowed within a C or
+    -- metamethod call" and ships an empty settings table.
+    local ok, settings = LrTasks.pcall(function() return photo:getDevelopSettings() end)
     if ok and type(settings) == "table" then
         developSettings = settings
     else

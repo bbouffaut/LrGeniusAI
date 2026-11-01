@@ -91,7 +91,11 @@ function StyleMatchCommon.buildIndexRow(photo, catalogId, previewPath)
     local latitude, longitude = gpsOf(photo)
 
     local developSettings = {}
-    local ok, settings = pcall(function() return photo:getDevelopSettings() end)
+    -- LrTasks.pcall, never plain pcall: photo:getDevelopSettings() yields
+    -- internally on LrC 15.x, and a plain pcall around yielding code dies with
+    -- "Yielding is not allowed within a C or metamethod call" — which silently
+    -- shipped an empty settings table (has_edits always false) for every photo.
+    local ok, settings = LrTasks.pcall(function() return photo:getDevelopSettings() end)
     if ok and type(settings) == "table" then
         developSettings = settings
     else
