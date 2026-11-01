@@ -1299,17 +1299,6 @@ function SearchIndexAPI.styleMatchSearch(uuid, filepath, options)
         })
     end
 
-    -- Original file: the server extracts the RAW embedded preview (or uses the
-    -- JPEG itself) for the neutral HSV histogram — single ingestion path (§2.4).
-    if nonEmpty(options.original_path) then
-        table.insert(mimeChunks, {
-            name = "original",
-            fileName = leafName(options.original_path) or "original.raw",
-            filePath = options.original_path,
-            contentType = "application/octet-stream",
-        })
-    end
-
     table.insert(mimeChunks, {
         name = "image",
         fileName = textValue(options.filename) or leafName(filepath) or "query.jpg",
@@ -1381,6 +1370,17 @@ function SearchIndexAPI.styleMatchIndexPhoto(uuid, filepath, options)
             fileName = leafName(options.neutral_image_path) or "neutral.jpg",
             filePath = options.neutral_image_path,
             contentType = "image/jpeg",
+        })
+    end
+
+    -- Original file: the server extracts the RAW embedded preview (or uses the
+    -- JPEG itself) for the neutral HSV histogram — single ingestion path (§2.4).
+    if nonEmpty(options.original_path) then
+        table.insert(mimeChunks, {
+            name = "original",
+            fileName = leafName(options.original_path) or "original.raw",
+            filePath = options.original_path,
+            contentType = "application/octet-stream",
         })
     end
 

@@ -78,57 +78,84 @@ LrTasks.startAsyncTask(function()
             functionContext = context,
         })
 
-        -- Phase 1 (0-50%): render current-look previews in batches.
-        local previewPaths = StyleMatchCommon.exportPreviews(photos, progressScope, 0, 0.5)
-
-        -- Phase 2 (50-100%): upload each photo.
+        -- Render and upload in batches: each batch is rendered once, then
+        -- every photo is pushed and its temp JPEG deleted. Interleaving keeps
+        -- the temp folder bounded and makes server-side activity start after
+        -- the first batch instead of after the whole set is rendered.
+        local BATCH_SIZE = 10
         local indexed, failed, skipped = 0, 0, 0
         local failures = {}
 
-        for index, photo in ipairs(photos) do
+        for batchStart = 1, #photos, BATCH_SIZE do
             if progressScope:isCanceled() then
                 break
             end
 
-            progressScope:setCaption(
-                LOC("$$$/LrGeniusAI/StyleMatchIndex/UploadProgress=Indexing ^1 of ^2...", index, #photos)
-            )
-
-            local previewPath = previewPaths[photo]
-            if previewPath == nil then
-                skipped = skipped + 1
-                table.insert(failures, tostring(photo:getFormattedMetadata("fileName") or photo.localIdentifier) .. ": render failed")
-            else
-                local ok, err = LrTasks.pcall(function()
-                    local row = StyleMatchCommon.buildIndexRow(photo, catalogId, previewPath)
-                    local response = SearchIndexAPI.styleMatchIndexPhoto(row.uuid, previewPath, {
-                        catalog_id = row.catalog_id,
-                        lrc_local_id = row.lrc_local_id,
-                        filename = row.filename,
-                        capture_time = row.capture_time,
-                        develop_settings = row.develop_settings,
-                        has_edits = row.has_edits,
-                        description = row.description,
-                        -- Server-side rawpy extracts the neutral render from
-                        -- the original, so no bootstrap run is needed for the
-                        -- colour signal. Disable with prefs.styleMatchUploadOriginals = false.
-                        original_path = (prefs.styleMatchUploadOriginals ~= false) and row.file_path or nil,
-                        timeout = 300,
-                    })
-                    if response == nil then
-                        error("server did not confirm indexing", 0)
-                    end
-                end)
-                if ok then
-                    indexed = indexed + 1
-                else
-                    failed = failed + 1
-                    table.insert(failures, tostring(photo:getFormattedMetadata("fileName") or photo.localIdentifier) .. ": " .. tostring(err))
-                end
+            local batchEnd = math.min(batchStart + BATCH_SIZE - 1, #photos)
+            local batch = {}
+            for index = batchStart, batchEnd do
+                table.insert(batch, photos[index])
             end
 
-            progressScope:setPortionComplete(0.5 + (0.5 * index / #photos), 1)
-            LrTasks.yield()
+            progressScope:setCaption(
+                LOC("$$$/LrGeniusAI/StyleMatchIndex/RenderBatch=Rendering previews ^1-^2 of ^3...",
+                    batchStart, batchEnd, #photos)
+            )
+            local previewPaths = StyleMatchCommon.exportPreviews(batch, progressScope, 0, 0)
+
+            for offset, photo in ipairs(batch) do
+                if progressScope:isCanceled() then
+                    break
+                end
+
+                local photoName = tostring(photo:getFormattedMetadata("fileName") or photo.localIdentifier)
+                local index = batchStart + offset - 1
+
+                progressScope:setCaption(
+                    LOC("$$$/LrGeniusAI/StyleMatchIndex/UploadProgress=Indexing ^1 of ^2: ^3...", index, #photos, photoName)
+                )
+
+                local previewPath = previewPaths[photo]
+                if previewPath == nil then
+                    skipped = skipped + 1
+                    table.insert(failures, photoName .. ": render failed")
+                    log:warn("Style Match: render failed for " .. photoName)
+                else
+                    local ok, err = LrTasks.pcall(function()
+                        local row = StyleMatchCommon.buildIndexRow(photo, catalogId, previewPath)
+                        local response = SearchIndexAPI.styleMatchIndexPhoto(row.uuid, previewPath, {
+                            catalog_id = row.catalog_id,
+                            lrc_local_id = row.lrc_local_id,
+                            filename = row.filename,
+                            capture_time = row.capture_time,
+                            develop_settings = row.develop_settings,
+                            has_edits = row.has_edits,
+                            description = row.description,
+                            -- Server-side rawpy extracts the neutral render
+                            -- from the original, so no bootstrap run is needed
+                            -- for the colour signal. Disable with
+                            -- prefs.styleMatchUploadOriginals = false.
+                            original_path = (prefs.styleMatchUploadOriginals ~= false) and row.file_path or nil,
+                            timeout = 300,
+                        })
+                        if response == nil then
+                            error("server did not confirm indexing", 0)
+                        end
+                    end)
+                    if ok then
+                        indexed = indexed + 1
+                        log:info("Style Match: indexed " .. photoName)
+                    else
+                        failed = failed + 1
+                        table.insert(failures, photoName .. ": " .. tostring(err))
+                        log:warn("Style Match: index failed for " .. photoName .. ": " .. tostring(err))
+                    end
+                    pcall(function() LrFileUtils.delete(previewPath) end)
+                end
+
+                progressScope:setPortionComplete((batchStart + offset - 1) / #photos, 1)
+                LrTasks.yield()
+            end
         end
 
         progressScope:done()
