@@ -1276,7 +1276,7 @@ function SearchIndexAPI.styleMatchSearch(uuid, filepath, options)
     addMimeValue(mimeChunks, "lrc_local_id", options.lrc_local_id)
     addMimeValue(mimeChunks, "filename", textValue(options.filename))
     addMimeValue(mimeChunks, "capture_time", formatCaptureTime(options.capture_time) or "")
-    addMimeValue(mimeChunks, "top_k", tostring(tonumber(options.top_k) or 10))
+    addMimeValue(mimeChunks, "top_k", tostring(math.floor(tonumber(options.top_k) or 10)))
 
     if nonEmpty(options.description) then
         addMimeValue(mimeChunks, "description", options.description)

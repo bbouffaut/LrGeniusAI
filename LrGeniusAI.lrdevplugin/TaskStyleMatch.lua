@@ -33,6 +33,41 @@ local function numberOrNil(value)
     return nil
 end
 
+--- Whole-photo count: the matches slider must never show or send a float.
+-- Clamps to [1, MAX_TOP_K] and rounds to the nearest integer.
+local function matchCountInt(value)
+    local number = tonumber(value)
+    if number == nil then
+        return DEFAULT_TOP_K
+    end
+    number = math.floor(number + 0.5)
+    if number < 1 then
+        return 1
+    end
+    if number > MAX_TOP_K then
+        return MAX_TOP_K
+    end
+    return number
+end
+
+--- Integer-only binding for the "Number of matches" slider.
+-- With a plain float binding the slider shows 11.999999-ish values and sends a
+-- fractional top_k. The transform rounds in BOTH directions, so the knob snaps
+-- to whole photos (view -> model) and the readout always renders "12"
+-- (model -> view). @param asText boolean render the view value as a string.
+local function bindMatchCount(asText)
+    return LrView.bind {
+        key = "topK",
+        transform = function(value, fromModel)
+            local rounded = matchCountInt(value)
+            if asText and fromModel then
+                return tostring(rounded)
+            end
+            return rounded
+        end,
+    }
+end
+
 local function truncate(text, maxLength)
     if text == nil then
         return nil
@@ -107,7 +142,7 @@ local function showOptionsDialog(ctx, photo)
     local share = LrView.share
 
     local props = LrBinding.makePropertyTable(ctx)
-    props.topK = tonumber(prefs.styleMatchTopK) or DEFAULT_TOP_K
+    props.topK = matchCountInt(prefs.styleMatchTopK)
     props.onlyEdited = prefs.styleMatchOnlyEdited ~= false
     props.useDescription = prefs.styleMatchUseDescription ~= false
 
@@ -147,14 +182,14 @@ local function showOptionsDialog(ctx, photo)
                     width = share "labelWidth",
                 },
                 f:slider {
-                    value = bind "topK",
+                    value = bindMatchCount(false),
                     min = 1,
                     max = MAX_TOP_K,
                     immediate = true,
                     width = 220,
                 },
                 f:static_text {
-                    title = bind "topK",
+                    title = bindMatchCount(true),
                     width = 40,
                 },
             },
@@ -189,7 +224,7 @@ local function showOptionsDialog(ctx, photo)
         return nil
     end
 
-    prefs.styleMatchTopK = props.topK
+    prefs.styleMatchTopK = matchCountInt(props.topK)
     prefs.styleMatchOnlyEdited = props.onlyEdited
     prefs.styleMatchUseDescription = props.useDescription
 
@@ -618,7 +653,7 @@ LrTasks.startAsyncTask(function()
             lrc_local_id = tostring(photo.localIdentifier or ""),
             filename = photo:getFormattedMetadata("fileName"),
             capture_time = captureTimeOf(photo),
-            top_k = tonumber(props.topK) or DEFAULT_TOP_K,
+            top_k = matchCountInt(props.topK),
             filters = { has_edits = props.onlyEdited == true },
         }
 
