@@ -44,6 +44,10 @@ return {
 			file = "StyleMatchSpike.lua",
 		},
 		{
+			title = LOC "$$$/LrGeniusAI/Menu/StyleMatch=Style Match...",
+			file = "TaskStyleMatch.lua",
+		},
+		{
 			title = LOC "$$$/LrGeniusAI/Menu/ExportStyleMatchManifest=Export Style-Match Manifest...",
 			file = "TaskExportManifest.lua",
 		},
@@ -69,6 +73,10 @@ return {
 		{
 			title = LOC "$$$/LrGeniusAI/Menu/StyleMatchSpike=Style Match SDK Spike (diagnostics)",
 			file = "StyleMatchSpike.lua",
+		},
+		{
+			title = LOC "$$$/LrGeniusAI/Menu/StyleMatch=Style Match...",
+			file = "TaskStyleMatch.lua",
 		},
 		{
 			title = LOC "$$$/LrGeniusAI/Menu/ExportStyleMatchManifest=Export Style-Match Manifest...",

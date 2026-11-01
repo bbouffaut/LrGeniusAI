@@ -735,6 +735,8 @@ local ENDPOINTS = {
     REMOVE = "/remove",
     PING = "/ping",
     IMPORT_METADATA = "/import/metadata",
+    STYLE_MATCH_SEARCH = "/style-match/search",
+    STYLE_MATCH_INDEX = "/style-match/index",
 }
 
 local EXPORT_SETTINGS = {
@@ -1212,6 +1214,149 @@ function SearchIndexAPI.removeMissingFromIndex()
         end
     end
     progressScope:done()
+end
+
+---
+-- Searches the catalog for photos whose look matches the given query render.
+-- @param uuid string UUID of the target photo.
+-- @param filepath string Path to a JPEG render of the target photo's current look.
+-- @param options table Optional fields: catalog_id, lrc_local_id, filename, capture_time,
+--   description, top_k, weights (table), filters (table), neutral_image_path, timeout.
+-- @return table|nil Decoded response { query = {...}, signals_used = {...}, matches = {...} }
+-- @return string|nil Error message when the request failed.
+--
+function SearchIndexAPI.styleMatchSearch(uuid, filepath, options)
+    options = options or {}
+
+    if filepath == nil then
+        log:error("styleMatchSearch: JPEG is nil")
+        return nil, "No image data provided"
+    end
+
+    local url, urlErr = endpointUrl(ENDPOINTS.STYLE_MATCH_SEARCH)
+    if not url then
+        log:error("styleMatchSearch failed: " .. urlErr)
+        return nil, urlErr
+    end
+
+    local mimeChunks = {}
+    addMimeValue(mimeChunks, "uuid", uuid)
+    addMimeValue(mimeChunks, "catalog_id", options.catalog_id)
+    addMimeValue(mimeChunks, "lrc_local_id", options.lrc_local_id)
+    addMimeValue(mimeChunks, "filename", textValue(options.filename))
+    addMimeValue(mimeChunks, "capture_time", formatCaptureTime(options.capture_time) or "")
+    addMimeValue(mimeChunks, "top_k", tostring(tonumber(options.top_k) or 10))
+
+    if nonEmpty(options.description) then
+        addMimeValue(mimeChunks, "description", options.description)
+    end
+
+    if options.weights ~= nil then
+        addMimeValue(mimeChunks, "weights", options.weights)
+    end
+
+    if options.filters ~= nil then
+        addMimeValue(mimeChunks, "filters", options.filters)
+    end
+
+    if nonEmpty(options.neutral_image_path) then
+        table.insert(mimeChunks, {
+            name = "neutral_image",
+            fileName = leafName(options.neutral_image_path) or "neutral.jpg",
+            filePath = options.neutral_image_path,
+            contentType = "image/jpeg",
+        })
+    end
+
+    table.insert(mimeChunks, {
+        name = "image",
+        fileName = textValue(options.filename) or leafName(filepath) or "query.jpg",
+        filePath = filepath,
+        contentType = "image/jpeg",
+    })
+
+    log:trace("Style Match search for photo " .. tostring(options.filename) .. " (uuid " .. tostring(uuid) .. ")")
+    logMultipartPayload(mimeChunks)
+
+    local response, err = _requestMultipart(url, mimeChunks, tonumber(options.timeout) or 120)
+    if not response then
+        log:error("Style Match search failed: " .. tostring(err))
+        return nil, err or "Unknown error"
+    end
+
+    return response
+end
+
+---
+-- Indexes (or re-indexes) a single photo as a Style Match reference.
+-- Used by the incremental hook after annotation and by the bootstrap script.
+-- @param uuid string UUID of the photo.
+-- @param filepath string Path to a JPEG render of the photo's current look.
+-- @param options table Optional fields: catalog_id, lrc_local_id, filename, capture_time,
+--   develop_settings (table or JSON string), has_edits, description, neutral_image_path, timeout.
+-- @return table|nil Decoded response.
+-- @return string|nil Error message when the request failed.
+--
+function SearchIndexAPI.styleMatchIndexPhoto(uuid, filepath, options)
+    options = options or {}
+
+    if filepath == nil then
+        log:error("styleMatchIndexPhoto: JPEG is nil")
+        return nil, "No image data provided"
+    end
+
+    local url, urlErr = endpointUrl(ENDPOINTS.STYLE_MATCH_INDEX)
+    if not url then
+        log:error("styleMatchIndexPhoto failed: " .. urlErr)
+        return nil, urlErr
+    end
+
+    local mimeChunks = {}
+    addMimeValue(mimeChunks, "uuid", uuid)
+    addMimeValue(mimeChunks, "catalog_id", options.catalog_id)
+    addMimeValue(mimeChunks, "lrc_local_id", options.lrc_local_id)
+    addMimeValue(mimeChunks, "filename", textValue(options.filename))
+    addMimeValue(mimeChunks, "capture_time", formatCaptureTime(options.capture_time) or "")
+    addMimeValue(mimeChunks, "has_edits", tostring(options.has_edits == true))
+
+    if options.develop_settings ~= nil then
+        if type(options.develop_settings) == "string" then
+            table.insert(mimeChunks, { name = "develop_settings", value = options.develop_settings })
+        else
+            addMimeValue(mimeChunks, "develop_settings", options.develop_settings)
+        end
+    end
+
+    if nonEmpty(options.description) then
+        addMimeValue(mimeChunks, "description", options.description)
+    end
+
+    if nonEmpty(options.neutral_image_path) then
+        table.insert(mimeChunks, {
+            name = "neutral_image",
+            fileName = leafName(options.neutral_image_path) or "neutral.jpg",
+            filePath = options.neutral_image_path,
+            contentType = "image/jpeg",
+        })
+    end
+
+    table.insert(mimeChunks, {
+        name = "image",
+        fileName = textValue(options.filename) or leafName(filepath) or "photo.jpg",
+        filePath = filepath,
+        contentType = "image/jpeg",
+    })
+
+    log:trace("Style Match index for photo " .. tostring(options.filename) .. " (uuid " .. tostring(uuid) .. ")")
+    logMultipartPayload(mimeChunks)
+
+    local response, err = _requestMultipart(url, mimeChunks, tonumber(options.timeout) or 120)
+    if not response then
+        log:error("Style Match index failed: " .. tostring(err))
+        return nil, err or "Unknown error"
+    end
+
+    return response
 end
 
 ---
