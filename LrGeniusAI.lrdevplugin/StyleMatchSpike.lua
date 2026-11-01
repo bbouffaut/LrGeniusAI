@@ -76,7 +76,7 @@ local function probeFunctions(label, moduleTable, functionNames)
     end
     for _, functionName in ipairs(functionNames) do
         local exists = type(moduleTable[functionName]) == "function"
-        addResult(exists and "OK" or "MISSING", label .. "." .. functionName .. "()")
+        addResult(exists and "OK" or "MISSING", "exists: " .. label .. "." .. functionName .. "()")
     end
 end
 
@@ -88,7 +88,7 @@ local function probeMethods(label, object, methodNames)
     for _, methodName in ipairs(methodNames) do
         local ok, methodType = pcall(function() return type(object[methodName]) end)
         local exists = ok and methodType == "function"
-        addResult(exists and "OK" or "MISSING", label .. ":" .. methodName .. "()")
+        addResult(exists and "OK" or "MISSING", "exists: " .. label .. ":" .. methodName .. "()")
     end
 end
 
