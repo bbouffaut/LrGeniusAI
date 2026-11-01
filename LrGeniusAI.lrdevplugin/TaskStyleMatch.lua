@@ -300,6 +300,16 @@ local function mergeTables(primary, secondary)
     return merged
 end
 
+--- Sorted key list, for logging what is about to be written.
+local function sortedKeys(settings)
+    local keys = {}
+    for key in pairs(settings or {}) do
+        table.insert(keys, tostring(key))
+    end
+    table.sort(keys)
+    return keys
+end
+
 --- Groups offered by the "Copy settings" chooser.
 -- Lightroom's own Copy Settings window cannot be raised from a plug-in (the SDK
 -- exposes no API for it), so this is the in-plugin equivalent: the same
@@ -479,8 +489,18 @@ local function showCopySettingsDialog(ctx, sourceName, settings, defaultSelectio
     end
 
     if #checkboxRows == 0 then
+        log:info("Style Match: copy-settings chooser has no group to offer; aborting")
         return nil
     end
+
+    local presentGroups = {}
+    for _, group in ipairs(COPY_GROUPS) do
+        if (counts[group.id] or 0) > 0 then
+            table.insert(presentGroups, group.id .. "=" .. tostring(counts[group.id]))
+        end
+    end
+    log:info("Style Match: copy-settings chooser opened for " .. tostring(sourceName)
+        .. " groups[" .. table.concat(presentGroups, ",") .. "]")
 
     local contents = f:column {
         bind_to_object = props,
@@ -500,6 +520,7 @@ local function showCopySettingsDialog(ctx, sourceName, settings, defaultSelectio
         resizable = true,
     }
     if result ~= "ok" then
+        log:info("Style Match: copy-settings chooser dismissed (result=" .. tostring(result) .. "); nothing applied")
         return nil
     end
 
@@ -531,14 +552,12 @@ local function applyDevelopSettingsTo(photo, settings, historyName)
     end
 
     local catalog = LrApplication.activeCatalog()
-    local keyCount = 0
-    for _ in pairs(settings) do
-        keyCount = keyCount + 1
-    end
+    local keys = sortedKeys(settings)
     log:trace(
-        "Style Match: applying " .. tostring(keyCount) .. " develop setting(s) to the chosen photo "
+        "Style Match: applying " .. tostring(#keys) .. " develop setting(s) to the chosen photo "
         .. tostring(photo:getFormattedMetadata("fileName")) .. " (history: " .. tostring(historyName) .. ")"
     )
+    log:trace("Style Match: keys to write: " .. table.concat(keys, ","))
     -- LrTasks.pcall: withWriteAccessDo yields while waiting for write access.
     local ok, err = LrTasks.pcall(function()
         catalog:withWriteAccessDo(historyName, function()
@@ -774,6 +793,8 @@ local function showResultsDialog(ctx, queryPhoto, response, matches)
                                 sourceName = tostring(match.file_name or "this photo"),
                                 recordAction = recordAction,
                             }
+                            log:info("Style Match: apply requested from " .. pending.sourceName
+                                .. " (" .. tostring(#sortedKeys(pending.settings)) .. " settings); closing results")
                             LrDialogs.stopModalWithResult(button, "apply")
                         end,
                     },
@@ -841,6 +862,9 @@ local function showResultsDialog(ctx, queryPhoto, response, matches)
         resizable = true,
     }
 
+    log:trace("Style Match: results dialog closing (matches=" .. tostring(#matches)
+        .. ", pendingApply=" .. tostring(pending ~= nil) .. ")")
+
     return pending
 end
 
@@ -870,13 +894,18 @@ local function applySelectedSettings(ctx, queryPhoto, pending)
         return
     end
 
+    log:info("Style Match: apply step started (" .. tostring(#sortedKeys(pending.settings))
+        .. " candidate settings from " .. tostring(pending.sourceName) .. ")")
+
     local selection = showCopySettingsDialog(ctx, pending.sourceName, pending.settings, defaultCopySelection())
     if selection == nil then
+        log:info("Style Match: apply step ended - chooser cancelled")
         return -- cancelled: nothing applied
     end
 
     local settings = filterCopyGroups(pending.settings, selection)
     if next(settings) == nil then
+        log:info("Style Match: apply step ended - no group checked, nothing to write")
         LrDialogs.message(
             LOC "$$$/LrGeniusAI/StyleMatch/NothingSelectedTitle=Nothing to apply",
             LOC "$$$/LrGeniusAI/StyleMatch/NothingSelected=No setting selected - nothing was applied.",
@@ -890,9 +919,11 @@ local function applySelectedSettings(ctx, queryPhoto, pending)
         if pending.recordAction ~= nil then
             pcall(function() pending.recordAction("apply_settings") end)
         end
-        log:info("Style Match: settings from " .. tostring(pending.sourceName) .. " applied to the chosen photo")
+        log:info("Style Match: apply step done - " .. tostring(#sortedKeys(settings))
+            .. " settings from " .. tostring(pending.sourceName) .. " applied to the chosen photo")
         revealInDevelop(queryPhoto)
     else
+        log:error("Style Match: apply step failed - " .. tostring(err))
         LrDialogs.message(
             LOC "$$$/LrGeniusAI/StyleMatch/ApplyFailedTitle=Apply failed",
             LOC("$$$/LrGeniusAI/StyleMatch/ApplyFailed=Apply failed: ^1", tostring(err)),
