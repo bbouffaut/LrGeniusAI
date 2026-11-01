@@ -274,7 +274,8 @@ local function applyDevelopSettingsTo(photo, settings, historyName)
     end
 
     local catalog = LrApplication.activeCatalog()
-    local ok, err = pcall(function()
+    -- LrTasks.pcall: withWriteAccessDo yields while waiting for write access.
+    local ok, err = LrTasks.pcall(function()
         catalog:withWriteAccessDo(historyName, function()
             photo:applyDevelopSettings(settings, historyName)
         end, Defaults.catalogWriteAccessOptions)
@@ -293,7 +294,7 @@ local function openInLoupe(photo)
     end
 
     local catalog = LrApplication.activeCatalog()
-    local ok, err = pcall(function()
+    local ok, err = LrTasks.pcall(function()
         catalog:withWriteAccessDo("Style Match: show in Loupe", function()
             catalog:setSelectedPhotos(photo, { photo })
         end, Defaults.catalogWriteAccessOptions)

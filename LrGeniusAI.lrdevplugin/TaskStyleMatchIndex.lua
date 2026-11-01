@@ -99,7 +99,7 @@ LrTasks.startAsyncTask(function()
                 skipped = skipped + 1
                 table.insert(failures, tostring(photo:getFormattedMetadata("fileName") or photo.localIdentifier) .. ": render failed")
             else
-                local ok, err = pcall(function()
+                local ok, err = LrTasks.pcall(function()
                     local row = StyleMatchCommon.buildIndexRow(photo, catalogId, previewPath)
                     local response = SearchIndexAPI.styleMatchIndexPhoto(row.uuid, previewPath, {
                         catalog_id = row.catalog_id,

@@ -136,7 +136,9 @@ local function exportPreviews(photos, progressScope, baseProgress, progressSpan)
                 startIndex, math.min(startIndex + PREVIEW_BATCH_SIZE - 1, #photos), #photos)
         )
 
-        local ok, batchPaths = pcall(function()
+        -- LrTasks.pcall: the exporter yields; a plain pcall would fail with
+        -- "attempt to yield across metamethod/C-call boundary".
+        local ok, batchPaths = LrTasks.pcall(function()
             return SearchIndexAPI.exportPhotosForIndexing(batch)
         end)
 

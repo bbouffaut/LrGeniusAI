@@ -772,7 +772,8 @@ LrTasks.startAsyncTask(function()
             local pushedCount, styleFailed = 0, 0
             for _, photo in ipairs(processedPhotos) do
                 local pushedOk = false
-                local ok, pushError = pcall(function()
+                -- LrTasks.pcall: exportPhotoForIndexing yields internally.
+                local ok, pushError = LrTasks.pcall(function()
                     local jpegPath = SearchIndexAPI.exportPhotoForIndexing(photo)
                     if jpegPath then
                         local developSettings = photo:getDevelopSettings()

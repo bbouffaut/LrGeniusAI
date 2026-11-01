@@ -854,7 +854,7 @@ function SearchIndexAPI.exportPhotosForIndexing(photos)
         log:warn("exportPhotosForIndexing batch failed (" .. tostring(photoPaths) .. "); exporting per photo")
         local paths = {}
         for _, photo in ipairs(photos) do
-            local singleOk, err = pcall(function()
+            local singleOk, err = LrTasks.pcall(function()
                 paths[photo] = SearchIndexAPI.exportPhotoForIndexing(photo)
             end)
             if not singleOk then

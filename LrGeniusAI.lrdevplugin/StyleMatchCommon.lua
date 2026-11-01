@@ -146,7 +146,10 @@ function StyleMatchCommon.exportPreviews(photos, progressScope, baseProgress, pr
                 startIndex, math.min(startIndex + PREVIEW_BATCH_SIZE - 1, #photos), #photos)
         )
 
-        local ok, batchPaths = pcall(function()
+        -- LrTasks.pcall (not plain pcall): the exporter yields (LrTasks.pcall
+        -- inside LrExportSession), and Lua 5.1 forbids yields across a plain
+        -- pcall boundary ("attempt to yield across metamethod/C-call boundary").
+        local ok, batchPaths = LrTasks.pcall(function()
             return SearchIndexAPI.exportPhotosForIndexing(batch)
         end)
 
