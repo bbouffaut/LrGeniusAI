@@ -309,6 +309,14 @@ local function applyDevelopSettingsTo(photo, settings, historyName)
     end
 
     local catalog = LrApplication.activeCatalog()
+    local keyCount = 0
+    for _ in pairs(settings) do
+        keyCount = keyCount + 1
+    end
+    log:trace(
+        "Style Match: applying " .. tostring(keyCount) .. " develop setting(s) to the chosen photo "
+        .. tostring(photo:getFormattedMetadata("fileName")) .. " (history: " .. tostring(historyName) .. ")"
+    )
     -- LrTasks.pcall: withWriteAccessDo yields while waiting for write access.
     local ok, err = LrTasks.pcall(function()
         catalog:withWriteAccessDo(historyName, function()
@@ -477,6 +485,12 @@ local function showResultsDialog(ctx, queryPhoto, response, matches)
         local sceneSettings = styleMatchSceneSubset(stripResult.settings)
         local hasStyleSettings = next(styleSettings) ~= nil
 
+        if not hasStyleSettings then
+            -- A row indexed before the develop-settings fix carries an empty
+            -- snapshot: say so instead of leaving a silently disabled button.
+            props["status" .. index] = LOC "$$$/LrGeniusAI/StyleMatch/NoSettings=No develop settings indexed for this match - re-index it with \"Index for Style Match\"."
+        end
+
         local feedbackBase = {
             ts = LrDate.timeToW3CDate(LrDate.currentTime()),
             query_uuid = queryUuid,
@@ -528,7 +542,11 @@ local function showResultsDialog(ctx, queryPhoto, response, matches)
                         title = LOC "$$$/LrGeniusAI/StyleMatch/ApplyStyle=Apply style",
                         enabled = hasStyleSettings,
                         action = function()
-                            local ok, err = applyDevelopSettingsTo(photo, styleSettings, LOC "$$$/LrGeniusAI/StyleMatch/HistoryApply=Style Match")
+                            -- Apply to the QUERY photo (the one the user chose),
+                            -- never to the matched photo: the match is only the
+                            -- style source, re-applying its own settings to
+                            -- itself is a no-op and looked like a dead button.
+                            local ok, err = applyDevelopSettingsTo(queryPhoto, styleSettings, LOC "$$$/LrGeniusAI/StyleMatch/HistoryApply=Style Match")
                             if ok then
                                 props["status" .. index] = LOC "$$$/LrGeniusAI/StyleMatch/AppliedStyle=Style applied."
                                 recordAction("apply_style")
@@ -542,7 +560,9 @@ local function showResultsDialog(ctx, queryPhoto, response, matches)
                         enabled = hasStyleSettings or next(sceneSettings) ~= nil,
                         action = function()
                             local settings = mergeTables(styleSettings, sceneSettings)
-                            local ok, err = applyDevelopSettingsTo(photo, settings, LOC "$$$/LrGeniusAI/StyleMatch/HistoryApplyScene=Style Match (style + exposure)")
+                            -- Same rule: the QUERY photo receives the style;
+                            -- the matched photo is only the source.
+                            local ok, err = applyDevelopSettingsTo(queryPhoto, settings, LOC "$$$/LrGeniusAI/StyleMatch/HistoryApplyScene=Style Match (style + exposure)")
                             if ok then
                                 props["status" .. index] = LOC "$$$/LrGeniusAI/StyleMatch/AppliedStyleScene=Style with exposure/WB applied."
                                 recordAction("apply_style_scene")
