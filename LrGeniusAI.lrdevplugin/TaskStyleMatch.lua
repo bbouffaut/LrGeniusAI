@@ -300,6 +300,228 @@ local function mergeTables(primary, secondary)
     return merged
 end
 
+--- Groups offered by the "Copy settings" chooser.
+-- Lightroom's own Copy Settings window cannot be raised from a plug-in (the SDK
+-- exposes no API for it), so this is the in-plugin equivalent: the same
+-- choose-what-to-copy step, limited to the develop keys this plugin is allowed
+-- to transfer. `scene = true` groups are unchecked by default — they depend on
+-- the capture, not on the look.
+local COPY_GROUPS = {
+    {
+        id = "tone",
+        loc = "$$$/LrGeniusAI/StyleMatch/CopyGroupTone=Basic tone: contrast, highlights, shadows, whites, blacks (incl. parametric curve)",
+        keys = { "Contrast2012", "Highlights2012", "Shadows2012", "Whites2012", "Blacks2012" },
+        prefixes = { "Parametric" },
+    },
+    {
+        id = "exposure",
+        loc = "$$$/LrGeniusAI/StyleMatch/CopyGroupExposure=Exposure",
+        keys = { "Exposure2012" },
+        scene = true,
+    },
+    {
+        id = "whitebalance",
+        loc = "$$$/LrGeniusAI/StyleMatch/CopyGroupWhiteBalance=White balance: temperature and tint",
+        keys = { "WhiteBalance", "Temperature", "Tint" },
+        scene = true,
+    },
+    {
+        id = "presence",
+        loc = "$$$/LrGeniusAI/StyleMatch/CopyGroupPresence=Presence: clarity, texture, dehaze, vibrance, saturation",
+        keys = { "Clarity2012", "Texture", "Dehaze", "Vibrance", "Saturation" },
+    },
+    {
+        id = "curve",
+        loc = "$$$/LrGeniusAI/StyleMatch/CopyGroupCurve=Tone curve",
+        keys = { "ToneCurvePV2012", "ToneCurvePV2012Red", "ToneCurvePV2012Green", "ToneCurvePV2012Blue" },
+    },
+    {
+        id = "hsl",
+        loc = "$$$/LrGeniusAI/StyleMatch/CopyGroupHsl=HSL / colour mix",
+        prefixes = { "HueAdjustment", "SaturationAdjustment", "LuminanceAdjustment" },
+    },
+    {
+        id = "colorgrade",
+        loc = "$$$/LrGeniusAI/StyleMatch/CopyGroupColorGrade=Colour grading",
+        prefixes = { "ColorGrade" },
+    },
+    {
+        id = "split",
+        loc = "$$$/LrGeniusAI/StyleMatch/CopyGroupSplitToning=Split toning",
+        prefixes = { "SplitToning" },
+    },
+    {
+        id = "sharpening",
+        loc = "$$$/LrGeniusAI/StyleMatch/CopyGroupSharpening=Sharpening",
+        prefixes = { "Sharpen" },
+    },
+    {
+        id = "noise",
+        loc = "$$$/LrGeniusAI/StyleMatch/CopyGroupNoise=Noise reduction",
+        prefixes = { "NoiseReduction", "ColorNoiseReduction" },
+    },
+    {
+        id = "vignette",
+        loc = "$$$/LrGeniusAI/StyleMatch/CopyGroupVignette=Post-crop vignette",
+        prefixes = { "PostCropVignette" },
+    },
+    {
+        id = "grain",
+        loc = "$$$/LrGeniusAI/StyleMatch/CopyGroupGrain=Grain",
+        prefixes = { "Grain" },
+    },
+    {
+        id = "bw",
+        loc = "$$$/LrGeniusAI/StyleMatch/CopyGroupBlackAndWhite=Black and white mix",
+        keys = { "ConvertToGrayscale" },
+        prefixes = { "GrayMix" },
+    },
+    {
+        id = "profile",
+        loc = "$$$/LrGeniusAI/StyleMatch/CopyGroupProfile=Camera profile and look",
+        keys = { "CameraProfile", "LookName", "LookAmount" },
+    },
+    {
+        id = "tint",
+        loc = "$$$/LrGeniusAI/StyleMatch/CopyGroupTint=Shadow and highlight tint",
+        keys = { "ShadowTint", "HighlightTint" },
+    },
+    {
+        id = "other",
+        loc = "$$$/LrGeniusAI/StyleMatch/CopyGroupOther=Other develop settings",
+    },
+}
+
+--- Group id a develop key belongs to ("other" when unclassified).
+local function copyGroupForKey(key)
+    for _, group in ipairs(COPY_GROUPS) do
+        for _, candidate in ipairs(group.keys or {}) do
+            if candidate == key then
+                return group.id
+            end
+        end
+        for _, prefix in ipairs(group.prefixes or {}) do
+            if string.sub(key, 1, #prefix) == prefix then
+                return group.id
+            end
+        end
+    end
+    return "other"
+end
+
+--- Number of present keys per group id.
+local function copyGroupCounts(settings)
+    local counts = {}
+    for key in pairs(settings or {}) do
+        local id = copyGroupForKey(key)
+        counts[id] = (counts[id] or 0) + 1
+    end
+    return counts
+end
+
+--- Checkbox defaults: style groups on, scene groups off, remembered between runs.
+local function defaultCopySelection()
+    local remembered = nil
+    if prefs.styleMatchCopyGroups ~= nil then
+        local text = tostring(prefs.styleMatchCopyGroups)
+        if text ~= "" then
+            remembered = {}
+            for id in string.gmatch(text, "[^,]+") do
+                remembered[id] = true
+            end
+        end
+    end
+
+    local selection = {}
+    for _, group in ipairs(COPY_GROUPS) do
+        if remembered ~= nil then
+            selection[group.id] = remembered[group.id] == true
+        else
+            selection[group.id] = group.scene ~= true
+        end
+    end
+    return selection
+end
+
+--- Keeps only the keys whose group the user checked.
+local function filterCopyGroups(settings, selection)
+    local filtered = {}
+    for key, value in pairs(settings or {}) do
+        if selection[copyGroupForKey(key)] == true then
+            filtered[key] = value
+        end
+    end
+    return filtered
+end
+
+--- "Copy settings" chooser: choose what to copy, like Lightroom's Copy Settings
+--- window, then apply the checked groups.
+-- @return table|nil selection by group id, or nil when cancelled.
+local function showCopySettingsDialog(ctx, sourceName, settings, defaultSelection)
+    local f = LrView.osFactory()
+    local props = LrBinding.makePropertyTable(ctx)
+    local counts = copyGroupCounts(settings)
+
+    local checkboxRows = {}
+    for _, group in ipairs(COPY_GROUPS) do
+        local count = counts[group.id] or 0
+        if count > 0 then
+            props[group.id] = defaultSelection[group.id] == true
+            table.insert(checkboxRows, f:row {
+                f:checkbox {
+                    value = LrView.bind(group.id),
+                },
+                f:static_text {
+                    title = LOC(group.loc) .. "  (" .. tostring(count) .. ")",
+                },
+            })
+        end
+    end
+
+    if #checkboxRows == 0 then
+        return nil
+    end
+
+    local contents = f:column {
+        bind_to_object = props,
+        spacing = f:control_spacing(),
+        f:static_text {
+            title = LOC("$$$/LrGeniusAI/StyleMatch/CopySettingsIntro=Choose what to copy from ^1 onto the selected photo:", tostring(sourceName)),
+            width_in_chars = 64,
+        },
+        f:column { spacing = 2, unpackValues(checkboxRows) },
+    }
+
+    local result = LrDialogs.presentModalDialog {
+        title = LOC "$$$/LrGeniusAI/StyleMatch/CopySettingsTitle=Copy settings",
+        contents = contents,
+        actionVerb = LOC "$$$/LrGeniusAI/StyleMatch/CopySettingsApply=Apply",
+        cancelVerb = LOC "$$$/LrGeniusAI/common/Cancel=Cancel",
+        resizable = true,
+    }
+    if result ~= "ok" then
+        return nil
+    end
+
+    local selection = {}
+    local selectedIds = {}
+    for _, group in ipairs(COPY_GROUPS) do
+        local count = counts[group.id] or 0
+        if count > 0 then
+            local checked = props[group.id] == true
+            selection[group.id] = checked
+            if checked then
+                table.insert(selectedIds, group.id)
+            end
+        end
+    end
+
+    prefs.styleMatchCopyGroups = table.concat(selectedIds, ",")
+    log:trace("Style Match: copy-settings groups selected: " .. table.concat(selectedIds, ","))
+
+    return selection
+end
+
 local function applyDevelopSettingsTo(photo, settings, historyName)
     if photo == nil then
         return false, "No catalog photo resolved for this match"
@@ -539,33 +761,34 @@ local function showResultsDialog(ctx, queryPhoto, response, matches)
                 spacing = 2,
                 f:row {
                     f:push_button {
-                        title = LOC "$$$/LrGeniusAI/StyleMatch/ApplyStyle=Apply style",
-                        enabled = hasStyleSettings,
-                        action = function()
-                            -- Apply to the QUERY photo (the one the user chose),
-                            -- never to the matched photo: the match is only the
-                            -- style source, re-applying its own settings to
-                            -- itself is a no-op and looked like a dead button.
-                            local ok, err = applyDevelopSettingsTo(queryPhoto, styleSettings, LOC "$$$/LrGeniusAI/StyleMatch/HistoryApply=Style Match")
-                            if ok then
-                                props["status" .. index] = LOC "$$$/LrGeniusAI/StyleMatch/AppliedStyle=Style applied."
-                                recordAction("apply_style")
-                            else
-                                props["status" .. index] = LOC("$$$/LrGeniusAI/StyleMatch/ApplyFailed=Apply failed: ^1", tostring(err))
-                            end
-                        end,
-                    },
-                    f:push_button {
-                        title = LOC "$$$/LrGeniusAI/StyleMatch/ApplyStyleScene=Apply style + exposure/WB",
+                        title = LOC "$$$/LrGeniusAI/StyleMatch/ApplySettings=Apply settings...",
                         enabled = hasStyleSettings or next(sceneSettings) ~= nil,
                         action = function()
-                            local settings = mergeTables(styleSettings, sceneSettings)
-                            -- Same rule: the QUERY photo receives the style;
-                            -- the matched photo is only the source.
-                            local ok, err = applyDevelopSettingsTo(queryPhoto, settings, LOC "$$$/LrGeniusAI/StyleMatch/HistoryApplyScene=Style Match (style + exposure)")
+                            -- Open the choose-what-to-copy step first (Lightroom's
+                            -- own Copy Settings window is not reachable from a
+                            -- plug-in), then apply onto the QUERY photo — never
+                            -- onto the matched photo, which is only the source.
+                            local allSettings = mergeTables(styleSettings, sceneSettings)
+                            local selection = showCopySettingsDialog(
+                                ctx,
+                                tostring(match.file_name or "this photo"),
+                                allSettings,
+                                defaultCopySelection()
+                            )
+                            if selection == nil then
+                                return
+                            end
+
+                            local settings = filterCopyGroups(allSettings, selection)
+                            if next(settings) == nil then
+                                props["status" .. index] = LOC "$$$/LrGeniusAI/StyleMatch/NothingSelected=No setting selected - nothing was applied."
+                                return
+                            end
+
+                            local ok, err = applyDevelopSettingsTo(queryPhoto, settings, LOC "$$$/LrGeniusAI/StyleMatch/HistoryApply=Style Match")
                             if ok then
-                                props["status" .. index] = LOC "$$$/LrGeniusAI/StyleMatch/AppliedStyleScene=Style with exposure/WB applied."
-                                recordAction("apply_style_scene")
+                                props["status" .. index] = LOC "$$$/LrGeniusAI/StyleMatch/AppliedSettings=Settings applied."
+                                recordAction("apply_settings")
                             else
                                 props["status" .. index] = LOC("$$$/LrGeniusAI/StyleMatch/ApplyFailed=Apply failed: ^1", tostring(err))
                             end
