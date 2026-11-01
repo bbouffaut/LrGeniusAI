@@ -665,6 +665,7 @@ local function showResultsDialog(ctx, queryPhoto, response, matches)
     for index = 1, #matches do
         props["status" .. index] = ""
     end
+    local pending = nil
 
     local queryUuid = trimmed(response.query and response.query.uuid) or tostring(queryPhoto:getRawMetadata("uuid") or "")
     local queryFileName = (response.query and response.query.filename) or queryPhoto:getFormattedMetadata("fileName")
@@ -763,35 +764,17 @@ local function showResultsDialog(ctx, queryPhoto, response, matches)
                     f:push_button {
                         title = LOC "$$$/LrGeniusAI/StyleMatch/ApplySettings=Apply settings...",
                         enabled = hasStyleSettings or next(sceneSettings) ~= nil,
-                        action = function()
-                            -- Open the choose-what-to-copy step first (Lightroom's
-                            -- own Copy Settings window is not reachable from a
-                            -- plug-in), then apply onto the QUERY photo — never
-                            -- onto the matched photo, which is only the source.
-                            local allSettings = mergeTables(styleSettings, sceneSettings)
-                            local selection = showCopySettingsDialog(
-                                ctx,
-                                tostring(match.file_name or "this photo"),
-                                allSettings,
-                                defaultCopySelection()
-                            )
-                            if selection == nil then
-                                return
-                            end
-
-                            local settings = filterCopyGroups(allSettings, selection)
-                            if next(settings) == nil then
-                                props["status" .. index] = LOC "$$$/LrGeniusAI/StyleMatch/NothingSelected=No setting selected - nothing was applied."
-                                return
-                            end
-
-                            local ok, err = applyDevelopSettingsTo(queryPhoto, settings, LOC "$$$/LrGeniusAI/StyleMatch/HistoryApply=Style Match")
-                            if ok then
-                                props["status" .. index] = LOC "$$$/LrGeniusAI/StyleMatch/AppliedSettings=Settings applied."
-                                recordAction("apply_settings")
-                            else
-                                props["status" .. index] = LOC("$$$/LrGeniusAI/StyleMatch/ApplyFailed=Apply failed: ^1", tostring(err))
-                            end
+                        action = function(button)
+                            -- Two-step, deliberately: record the intent and close
+                            -- THIS dialog. The chooser is then presented outside
+                            -- any modal dialog — nesting a modal inside a modal
+                            -- button action swallows the apply silently.
+                            pending = {
+                                settings = mergeTables(styleSettings, sceneSettings),
+                                sourceName = tostring(match.file_name or "this photo"),
+                                recordAction = recordAction,
+                            }
+                            LrDialogs.stopModalWithResult(button, "apply")
                         end,
                     },
                 },
@@ -857,6 +840,65 @@ local function showResultsDialog(ctx, queryPhoto, response, matches)
         cancelVerb = LOC "$$$/LrGeniusAI/common/Close=Close",
         resizable = true,
     }
+
+    return pending
+end
+
+--- Brings the photo up in the Develop module, so an applied style is visible
+--- immediately (all dialogs are closed by then).
+local function revealInDevelop(photo)
+    if photo == nil then
+        return
+    end
+    local ok = LrTasks.pcall(function()
+        local catalog = LrApplication.activeCatalog()
+        catalog:withWriteAccessDo("Style Match: reveal", function()
+            catalog:setSelectedPhotos(photo, { photo })
+        end, Defaults.catalogWriteAccessOptions)
+    end)
+    if ok then
+        pcall(function() LrApplicationView.switchToModule("develop") end)
+    else
+        log:warn("Style Match: could not reveal the photo in Develop")
+    end
+end
+
+--- Second step of "Apply settings...": the results dialog is already closed, so
+--- the chooser and the apply run outside any modal dialog.
+local function applySelectedSettings(ctx, queryPhoto, pending)
+    if pending == nil then
+        return
+    end
+
+    local selection = showCopySettingsDialog(ctx, pending.sourceName, pending.settings, defaultCopySelection())
+    if selection == nil then
+        return -- cancelled: nothing applied
+    end
+
+    local settings = filterCopyGroups(pending.settings, selection)
+    if next(settings) == nil then
+        LrDialogs.message(
+            LOC "$$$/LrGeniusAI/StyleMatch/NothingSelectedTitle=Nothing to apply",
+            LOC "$$$/LrGeniusAI/StyleMatch/NothingSelected=No setting selected - nothing was applied.",
+            "warning"
+        )
+        return
+    end
+
+    local ok, err = applyDevelopSettingsTo(queryPhoto, settings, LOC "$$$/LrGeniusAI/StyleMatch/HistoryApply=Style Match")
+    if ok then
+        if pending.recordAction ~= nil then
+            pcall(function() pending.recordAction("apply_settings") end)
+        end
+        log:info("Style Match: settings from " .. tostring(pending.sourceName) .. " applied to the chosen photo")
+        revealInDevelop(queryPhoto)
+    else
+        LrDialogs.message(
+            LOC "$$$/LrGeniusAI/StyleMatch/ApplyFailedTitle=Apply failed",
+            LOC("$$$/LrGeniusAI/StyleMatch/ApplyFailed=Apply failed: ^1", tostring(err)),
+            "critical"
+        )
+    end
 end
 
 LrTasks.startAsyncTask(function()
@@ -947,6 +989,7 @@ LrTasks.startAsyncTask(function()
             match.photo = resolved[index]
         end
 
-        showResultsDialog(context, photo, response, matches)
+        local pending = showResultsDialog(context, photo, response, matches)
+        applySelectedSettings(context, photo, pending)
     end)
 end)
