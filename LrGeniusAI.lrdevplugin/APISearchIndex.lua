@@ -776,61 +776,92 @@ function SearchIndexAPI.exportPhotoForIndexing(photo)
 
     local tempDir = LrPathUtils.getStandardFilePath('temp')
     local photoName = photoFilename(photo)
-    local catalog = LrApplication.activeCatalog()
 
     EXPORT_SETTINGS.LR_export_destinationPathPrefix = tempDir
-   
-    local exportSession = LrExportSession({
-        photosToExport = { photo },
-        exportSettings = EXPORT_SETTINGS
-    })
 
-    for _, rendition in exportSession:renditions() do
-        local success, path = rendition:waitForRender()
-        if not nonEmpty(photoName) then
-            photoName = leafName(path) or "unknown"
+    -- LrExportSession asserts it is built from a yieldable task
+    -- ("AgExportSession:addRenditionsForPhotos: must not call on main UI task").
+    -- Wrapping in LrTasks.pcall guarantees a fresh async task, whatever state
+    -- the calling task is in.
+    local ok, path = LrTasks.pcall(function()
+        local exportSession = LrExportSession({
+            photosToExport = { photo },
+            exportSettings = EXPORT_SETTINGS
+        })
+
+        for _, rendition in exportSession:renditions() do
+            local success, result = rendition:waitForRender()
+            if not nonEmpty(photoName) then
+                photoName = leafName(result) or "unknown"
+            end
+            log:trace("Export completed for photo: " .. photoName .. " Success: " .. tostring(success) .. " Path: " .. tostring(result))
+            if success then -- Export successful
+                return result
+            else
+                -- Error during export
+                log:error("Failed to export photo for indexing. " .. (result or 'unknown error'))
+                return nil
+            end
         end
-        log:trace("Export completed for photo: " .. photoName .. " Success: " .. tostring(success) .. " Path: " .. tostring(path))
-        if success then -- Export successful
-            return path
-        else
-            -- Error during export
-            log:error("Failed to export photo for indexing. " .. (path or 'unknown error'))
-            return nil
-        end
+        return nil
+    end)
+
+    if not ok then
+        log:error("exportPhotoForIndexing failed: " .. tostring(path))
+        return nil
     end
+    return path
 end
 
 function SearchIndexAPI.exportPhotosForIndexing(photos)
     if not photos or #photos == 0 then return {} end
 
     local tempDir = LrPathUtils.getStandardFilePath('temp')
-
     EXPORT_SETTINGS.LR_export_destinationPathPrefix = tempDir
 
-    local exportSession = LrExportSession({
-        photosToExport = photos,
-        exportSettings = EXPORT_SETTINGS
-    })
+    -- Same constraint as exportPhotoForIndexing: LrExportSession must be built
+    -- on a yieldable task. The whole batch runs inside LrTasks.pcall; on
+    -- failure the caller retries per photo (see StyleMatchCommon.exportPreviews).
+    local ok, photoPaths = LrTasks.pcall(function()
+        local exportSession = LrExportSession({
+            photosToExport = photos,
+            exportSettings = EXPORT_SETTINGS
+        })
 
-    local photoPaths = {}
-    local photoIndex = 1
-    for _, rendition in exportSession:renditions() do
-        local success, path = rendition:waitForRender()
-        local photo = photos[photoIndex]
-        if photo ~= nil then
-            local photoName = photoFilename(photo, path)
-            log:trace("Export completed for photo: " .. photoName .. " Success: " .. tostring(success) .. " Path: " .. tostring(path))
-            if success then
-                photoPaths[photo] = path
+        local paths = {}
+        local photoIndex = 1
+        for _, rendition in exportSession:renditions() do
+            local success, path = rendition:waitForRender()
+            local photo = photos[photoIndex]
+            if photo ~= nil then
+                local photoName = photoFilename(photo, path)
+                log:trace("Export completed for photo: " .. photoName .. " Success: " .. tostring(success) .. " Path: " .. tostring(path))
+                if success then
+                    paths[photo] = path
+                else
+                    log:error("Failed to export photo for indexing. " .. (path or 'unknown error'))
+                    paths[photo] = nil
+                end
             else
-                log:error("Failed to export photo for indexing. " .. (path or 'unknown error'))
-                photoPaths[photo] = nil
+                log:error("Photo is nil in exportPhotosForIndexing, probably it got deleted in the meantime.")
             end
-        else
-            log:error("Photo is nil in exportPhotosForIndexing, probably it got deleted in the meantime.")
+            photoIndex = photoIndex + 1
         end
-        photoIndex = photoIndex + 1
+        return paths
+    end)
+
+    if not ok then
+        log:warn("exportPhotosForIndexing batch failed (" .. tostring(photoPaths) .. "); exporting per photo")
+        local paths = {}
+        for _, photo in ipairs(photos) do
+            local singleOk, err = pcall(function()
+                paths[photo] = SearchIndexAPI.exportPhotoForIndexing(photo)
+            end)
+            if not singleOk then
+                log:warn("exportPhotoForIndexing failed for " .. tostring(photoFilename(photo)) .. ": " .. tostring(err))
+            end
+        end
+        return paths
     end
     return photoPaths
 end
