@@ -751,6 +751,68 @@ LrTasks.startAsyncTask(function()
                 end
             end
         end
+
+        -- Style Match incremental hook (plan §3.6): push freshly annotated
+        -- photos to /style-match/index so they become comparable immediately.
+        -- Best effort — failures are logged and never break the annotation
+        -- flow. Disable with prefs.styleMatchAutoIndex = false. The neutral
+        -- render is omitted (not reachable from Lua); the colour signal stays
+        -- NULL until the next bootstrap run backfills it.
+        if status ~= "allfailed"
+            and processedPhotos and #processedPhotos > 0
+            and (props.enableMetadata or props.enableEmbeddings)
+            and prefs.styleMatchAutoIndex ~= false then
+            log:trace("Style Match: pushing " .. #processedPhotos .. " annotated photos to the style index")
+            local styleProgressScope = LrProgressScope({
+                title = LOC "$$$/LrGeniusAI/StyleMatch/IncrementalTitle=Updating Style Match index...",
+                functionContext = context,
+                parent = progressScope,
+            })
+            local catalogId = StyleWhitelist.catalogId()
+            local pushedCount, styleFailed = 0, 0
+            for _, photo in ipairs(processedPhotos) do
+                local pushedOk = false
+                local ok, pushError = pcall(function()
+                    local jpegPath = SearchIndexAPI.exportPhotoForIndexing(photo)
+                    if jpegPath then
+                        local developSettings = photo:getDevelopSettings()
+                        local hasEdits = StyleWhitelist.hasEdits(developSettings)
+                        local response = SearchIndexAPI.styleMatchIndexPhoto(
+                            photo:getRawMetadata('uuid'),
+                            jpegPath,
+                            {
+                                catalog_id = catalogId,
+                                lrc_local_id = photo.localIdentifier,
+                                filename = photo:getFormattedMetadata('fileName'),
+                                capture_time = photo:getRawMetadata('dateTimeOriginalISO8601'),
+                                develop_settings = developSettings,
+                                has_edits = hasEdits,
+                                description = photo:getFormattedMetadata('caption'),
+                                -- Server-side rawpy extracts the neutral render for the
+                                -- colour signal; no bootstrap run needed.
+                                original_path = (prefs.styleMatchUploadOriginals ~= false)
+                                    and photo:getRawMetadata('path') or nil,
+                                timeout = 300,
+                            }
+                        )
+                        if response then
+                            pushedOk = true
+                        end
+                    end
+                end)
+                if not ok then
+                    log:warn("Style Match: incremental push error: " .. tostring(pushError))
+                end
+                if pushedOk then
+                    pushedCount = pushedCount + 1
+                else
+                    styleFailed = styleFailed + 1
+                end
+                styleProgressScope:setPortionProgress(pushedCount + styleFailed, #processedPhotos)
+            end
+            styleProgressScope:done()
+            log:info("Style Match: incremental push finished: pushed=" .. pushedCount .. " failed=" .. styleFailed)
+        end
         
         progressScope:done()
 

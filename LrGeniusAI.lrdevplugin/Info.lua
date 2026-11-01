@@ -39,6 +39,22 @@ return {
 			title = LOC "$$$/LrGeniusAI/Menu/ImportMetadata=Push metadata from Catalog to Backend......",
 			file = "TaskImportMetadata.lua",
 		},
+		{
+			title = LOC "$$$/LrGeniusAI/Menu/StyleMatchSpike=Style Match SDK Spike (diagnostics)",
+			file = "StyleMatchSpike.lua",
+		},
+		{
+			title = LOC "$$$/LrGeniusAI/Menu/StyleMatch=Style Match...",
+			file = "TaskStyleMatch.lua",
+		},
+		{
+			title = LOC "$$$/LrGeniusAI/Menu/ExportStyleMatchManifest=Export Style-Match Manifest...",
+			file = "TaskExportManifest.lua",
+		},
+		{
+			title = LOC "$$$/LrGeniusAI/Menu/StyleMatchIndex=Index for Style Match...",
+			file = "TaskStyleMatchIndex.lua",
+		},
 	},
 
 	LrExportMenuItems = {
@@ -57,6 +73,22 @@ return {
 		{
 			title = LOC "$$$/LrGeniusAI/Menu/ImportMetadata=Push metadata from Catalog to Backend......",
 			file = "TaskImportMetadata.lua",
+		},
+		{
+			title = LOC "$$$/LrGeniusAI/Menu/StyleMatchSpike=Style Match SDK Spike (diagnostics)",
+			file = "StyleMatchSpike.lua",
+		},
+		{
+			title = LOC "$$$/LrGeniusAI/Menu/StyleMatch=Style Match...",
+			file = "TaskStyleMatch.lua",
+		},
+		{
+			title = LOC "$$$/LrGeniusAI/Menu/ExportStyleMatchManifest=Export Style-Match Manifest...",
+			file = "TaskExportManifest.lua",
+		},
+		{
+			title = LOC "$$$/LrGeniusAI/Menu/StyleMatchIndex=Index for Style Match...",
+			file = "TaskStyleMatchIndex.lua",
 		},
 	},
 }
