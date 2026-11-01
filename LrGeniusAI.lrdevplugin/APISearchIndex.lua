@@ -1268,6 +1268,17 @@ function SearchIndexAPI.styleMatchSearch(uuid, filepath, options)
         })
     end
 
+    -- Original file: the server extracts the RAW embedded preview (or uses the
+    -- JPEG itself) for the neutral HSV histogram — single ingestion path (§2.4).
+    if nonEmpty(options.original_path) then
+        table.insert(mimeChunks, {
+            name = "original",
+            fileName = leafName(options.original_path) or "original.raw",
+            filePath = options.original_path,
+            contentType = "application/octet-stream",
+        })
+    end
+
     table.insert(mimeChunks, {
         name = "image",
         fileName = textValue(options.filename) or leafName(filepath) or "query.jpg",
@@ -1293,7 +1304,9 @@ end
 -- @param uuid string UUID of the photo.
 -- @param filepath string Path to a JPEG render of the photo's current look.
 -- @param options table Optional fields: catalog_id, lrc_local_id, filename, capture_time,
---   develop_settings (table or JSON string), has_edits, description, neutral_image_path, timeout.
+--   develop_settings (table or JSON string), has_edits, description, neutral_image_path,
+--   original_path (RAW/JPEG original; the server extracts the neutral render from it
+--   with rawpy so the colour signal exists without a separate bootstrap run), timeout.
 -- @return table|nil Decoded response.
 -- @return string|nil Error message when the request failed.
 --

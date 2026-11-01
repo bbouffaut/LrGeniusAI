@@ -109,7 +109,11 @@ LrTasks.startAsyncTask(function()
                         develop_settings = row.develop_settings,
                         has_edits = row.has_edits,
                         description = row.description,
-                        timeout = 120,
+                        -- Server-side rawpy extracts the neutral render from
+                        -- the original, so no bootstrap run is needed for the
+                        -- colour signal. Disable with prefs.styleMatchUploadOriginals = false.
+                        original_path = (prefs.styleMatchUploadOriginals ~= false) and row.file_path or nil,
+                        timeout = 300,
                     })
                     if response == nil then
                         error("server did not confirm indexing", 0)
@@ -133,7 +137,7 @@ LrTasks.startAsyncTask(function()
             .. " scope=" .. scope .. " catalog=" .. tostring(catalogId))
 
         local message = LOC(
-            "$$$/LrGeniusAI/StyleMatchIndex/Summary=Indexed ^1 photo(s) from ^2. ^3 failed, ^4 skipped.\n\nColour matching for these photos is skipped until the next bootstrap run (the neutral render is not available from the plugin).",
+            "$$$/LrGeniusAI/StyleMatchIndex/Summary=Indexed ^1 photo(s) from ^2. ^3 failed, ^4 skipped.\n\nColour matching is computed on the server from each photo's original file (disable with the styleMatchUploadOriginals preference).",
             indexed, scopeLabel(scope), failed, skipped
         )
         if #failures > 0 then

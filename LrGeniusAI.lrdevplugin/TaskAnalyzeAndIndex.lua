@@ -788,7 +788,11 @@ LrTasks.startAsyncTask(function()
                                 develop_settings = developSettings,
                                 has_edits = hasEdits,
                                 description = photo:getFormattedMetadata('caption'),
-                                timeout = 120,
+                                -- Server-side rawpy extracts the neutral render for the
+                                -- colour signal; no bootstrap run needed.
+                                original_path = (prefs.styleMatchUploadOriginals ~= false)
+                                    and photo:getRawMetadata('path') or nil,
+                                timeout = 300,
                             }
                         )
                         if response then
