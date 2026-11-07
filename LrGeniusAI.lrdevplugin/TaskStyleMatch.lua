@@ -136,7 +136,60 @@ local function targetPhoto()
     return photo
 end
 
-local function showOptionsDialog(ctx, photo)
+--- Every selected catalog photo, videos excluded, in the order Lightroom returns
+-- them (selection / sort order of the active source).
+--
+local function selectedPhotos()
+    local photos = {}
+    local ok, targets = pcall(function()
+        return LrApplication.activeCatalog():getTargetPhotos()
+    end)
+    if not ok or targets == nil then
+        log:warn("Style Match: could not read the selection: " .. tostring(targets))
+        return photos
+    end
+
+    for _, photo in ipairs(targets) do
+        local isVideo = false
+        pcall(function() isVideo = photo:getRawMetadata("isVideo") == true end)
+        if not isVideo then
+            table.insert(photos, photo)
+        end
+    end
+
+    return photos
+end
+
+--- Photos one run works on.
+-- Develop: only the active photo (the module shows a single photo even when
+-- several are selected in the filmstrip) - the classic one-photo flow.
+-- Library: every selected photo, so the proposals are shown one after the other.
+--
+local function targetPhotos()
+    local module = nil
+    local ok = pcall(function() module = LrApplicationView.getCurrentModuleName() end)
+
+    if ok and module == "develop" then
+        local photo = targetPhoto()
+        if photo ~= nil then
+            return { photo }
+        end
+        return {}
+    end
+
+    local photos = selectedPhotos()
+    if #photos > 0 then
+        return photos
+    end
+
+    local photo = targetPhoto()
+    if photo ~= nil then
+        return { photo }
+    end
+    return {}
+end
+
+local function showOptionsDialog(ctx, photos)
     local f = LrView.osFactory()
     local bind = LrView.bind
     local share = LrView.share
@@ -146,13 +199,24 @@ local function showOptionsDialog(ctx, photo)
     props.onlyEdited = prefs.styleMatchOnlyEdited ~= false
     props.useDescription = prefs.styleMatchUseDescription ~= false
 
+    local total = #photos
+    local photo = photos[1]
     local fileName = photo:getFormattedMetadata("fileName") or tostring(photo.localIdentifier)
+
+    local queryTitle = LOC "$$$/LrGeniusAI/StyleMatch/QueryTitle=Target photo"
+    local queryName = fileName
+    local queryHint = LOC "$$$/LrGeniusAI/StyleMatch/QueryHint=Style Match looks for photos in this catalog with a similar look and offers their develop settings."
+    if total > 1 then
+        queryTitle = LOC("$$$/LrGeniusAI/StyleMatch/QueryTitleBatch=Target photos (^1)", total)
+        queryName = LOC("$$$/LrGeniusAI/StyleMatch/QueryNameBatch=^1 photos selected, starting with ^2", total, fileName)
+        queryHint = LOC "$$$/LrGeniusAI/StyleMatch/QueryHintBatch=The search runs on each selected photo in turn and the proposals are shown one photo after another."
+    end
 
     local contents = f:column {
         bind_to_object = props,
         spacing = f:control_spacing(),
         f:group_box {
-            title = LOC "$$$/LrGeniusAI/StyleMatch/QueryTitle=Target photo",
+            title = queryTitle,
             fill_horizontal = 1,
             f:row {
                 spacing = f:control_spacing(),
@@ -163,11 +227,11 @@ local function showOptionsDialog(ctx, photo)
                 f:column {
                     spacing = f:control_spacing(),
                     f:static_text {
-                        title = fileName,
+                        title = queryName,
                         font = "<system/bold>",
                     },
                     f:static_text {
-                        title = LOC "$$$/LrGeniusAI/StyleMatch/QueryHint=Style Match looks for photos in this catalog with a similar look and offers their develop settings.",
+                        title = queryHint,
                         width_in_chars = 55,
                     },
                 },
@@ -252,10 +316,12 @@ end
 
 ---
 -- Resolves server matches to catalog photos: uuid first, localIdentifier map second.
+-- @param cache table optional, reused across the photos of one run so the
+--   localIdentifier map is built at most once per run.
 --
-local function resolveMatches(matches)
+local function resolveMatches(matches, cache)
     local catalog = LrApplication.activeCatalog()
-    local localIdMap
+    cache = cache or {}
     local resolved = {}
 
     for index, match in ipairs(matches) do
@@ -270,10 +336,10 @@ local function resolveMatches(matches)
         end
 
         if photo == nil and match.lrc_local_id ~= nil then
-            if localIdMap == nil then
-                localIdMap = buildLocalIdentifierMap()
+            if cache.localIdMap == nil then
+                cache.localIdMap = buildLocalIdentifierMap()
             end
-            photo = localIdMap[tostring(match.lrc_local_id)]
+            photo = cache.localIdMap[tostring(match.lrc_local_id)]
         end
 
         resolved[index] = photo
@@ -676,9 +742,12 @@ local function describeMatch(match, index)
     return table.concat(lines, "\n")
 end
 
-local function showResultsDialog(ctx, queryPhoto, response, matches)
+local function showResultsDialog(ctx, queryPhoto, response, matches, position)
     local f = LrView.osFactory()
     local bind = LrView.bind
+
+    position = position or { index = 1, total = 1 }
+    local batch = position.total > 1
 
     local props = LrBinding.makePropertyTable(ctx)
     for index = 1, #matches do
@@ -840,7 +909,9 @@ local function showResultsDialog(ctx, queryPhoto, response, matches)
         bind_to_object = props,
         spacing = f:control_spacing(),
         f:static_text {
-            title = LOC("$$$/LrGeniusAI/StyleMatch/ResultsHeader=^1 matches for ^2", #matches, tostring(queryFileName)),
+            title = batch
+                and LOC("$$$/LrGeniusAI/StyleMatch/ResultsHeaderBatch=Photo ^1 of ^2 - ^3 matches for ^4", position.index, position.total, #matches, tostring(queryFileName))
+                or LOC("$$$/LrGeniusAI/StyleMatch/ResultsHeader=^1 matches for ^2", #matches, tostring(queryFileName)),
             font = "<system/bold>",
         },
         f:static_text {
@@ -855,17 +926,27 @@ local function showResultsDialog(ctx, queryPhoto, response, matches)
         },
     }
 
-    LrDialogs.presentModalDialog {
-        title = LOC "$$$/LrGeniusAI/StyleMatch/ResultsTitle=Style Match Results",
+    local dialogArgs = {
         contents = contents,
-        cancelVerb = LOC "$$$/LrGeniusAI/common/Close=Close",
         resizable = true,
     }
+    if batch then
+        -- "Skip photo" moves on to the next photo of the run, "Stop" ends the run.
+        dialogArgs.title = LOC("$$$/LrGeniusAI/StyleMatch/ResultsTitleBatch=Style Match Results - photo ^1 of ^2", position.index, position.total)
+        dialogArgs.cancelVerb = LOC "$$$/LrGeniusAI/StyleMatch/SkipPhoto=Skip photo"
+        dialogArgs.otherVerb = LOC "$$$/LrGeniusAI/StyleMatch/StopRun=Stop"
+    else
+        dialogArgs.title = LOC "$$$/LrGeniusAI/StyleMatch/ResultsTitle=Style Match Results"
+        dialogArgs.cancelVerb = LOC "$$$/LrGeniusAI/common/Close=Close"
+    end
 
-    log:trace("Style Match: results dialog closing (matches=" .. tostring(#matches)
+    local dialogResult = LrDialogs.presentModalDialog(dialogArgs)
+
+    log:trace("Style Match: results dialog closing (photo " .. tostring(position.index) .. "/" .. tostring(position.total)
+        .. ", matches=" .. tostring(#matches) .. ", result=" .. tostring(dialogResult)
         .. ", pendingApply=" .. tostring(pending ~= nil) .. ")")
 
-    return pending
+    return pending, dialogResult
 end
 
 --- Brings the photo up in the Develop module, so an applied style is visible
@@ -889,9 +970,13 @@ end
 
 --- Second step of "Apply settings...": the results dialog is already closed, so
 --- the chooser and the apply run outside any modal dialog.
-local function applySelectedSettings(ctx, queryPhoto, pending)
+-- @param options table optional: batch = true defers the Develop reveal to the
+--   end of the run instead of switching module between photos.
+-- @return string "applied" | "skipped" | "failed"
+local function applySelectedSettings(ctx, queryPhoto, pending, options)
+    options = options or {}
     if pending == nil then
-        return
+        return "skipped"
     end
 
     log:info("Style Match: apply step started (" .. tostring(#sortedKeys(pending.settings))
@@ -900,7 +985,7 @@ local function applySelectedSettings(ctx, queryPhoto, pending)
     local selection = showCopySettingsDialog(ctx, pending.sourceName, pending.settings, defaultCopySelection())
     if selection == nil then
         log:info("Style Match: apply step ended - chooser cancelled")
-        return -- cancelled: nothing applied
+        return "skipped" -- cancelled: nothing applied to this photo
     end
 
     local settings = filterCopyGroups(pending.settings, selection)
@@ -911,7 +996,7 @@ local function applySelectedSettings(ctx, queryPhoto, pending)
             LOC "$$$/LrGeniusAI/StyleMatch/NothingSelected=No setting selected - nothing was applied.",
             "warning"
         )
-        return
+        return "skipped"
     end
 
     local ok, err = applyDevelopSettingsTo(queryPhoto, settings, LOC "$$$/LrGeniusAI/StyleMatch/HistoryApply=Style Match")
@@ -921,106 +1006,219 @@ local function applySelectedSettings(ctx, queryPhoto, pending)
         end
         log:info("Style Match: apply step done - " .. tostring(#sortedKeys(settings))
             .. " settings from " .. tostring(pending.sourceName) .. " applied to the chosen photo")
-        revealInDevelop(queryPhoto)
-    else
-        log:error("Style Match: apply step failed - " .. tostring(err))
-        LrDialogs.message(
-            LOC "$$$/LrGeniusAI/StyleMatch/ApplyFailedTitle=Apply failed",
-            LOC("$$$/LrGeniusAI/StyleMatch/ApplyFailed=Apply failed: ^1", tostring(err)),
-            "critical"
-        )
+        if options.batch ~= true then
+            revealInDevelop(queryPhoto)
+        end
+        return "applied"
     end
+
+    log:error("Style Match: apply step failed - " .. tostring(err))
+    LrDialogs.message(
+        LOC "$$$/LrGeniusAI/StyleMatch/ApplyFailedTitle=Apply failed",
+        LOC("$$$/LrGeniusAI/StyleMatch/ApplyFailed=Apply failed: ^1", tostring(err)),
+        "critical"
+    )
+    return "failed"
+end
+
+--- Per-photo status labels used by the run summary.
+local STATUS_LABELS = {
+    applied = "$$$/LrGeniusAI/StyleMatch/StatusApplied=settings applied",
+    skipped = "$$$/LrGeniusAI/StyleMatch/StatusSkipped=no proposal applied",
+    failed = "$$$/LrGeniusAI/StyleMatch/StatusFailed=apply failed",
+    no_matches = "$$$/LrGeniusAI/StyleMatch/StatusNoMatches=no similar photo found",
+    render_failed = "$$$/LrGeniusAI/StyleMatch/StatusRenderFailed=could not render the current look",
+    search_failed = "$$$/LrGeniusAI/StyleMatch/StatusSearchFailed=search failed",
+    stop = "$$$/LrGeniusAI/StyleMatch/StatusStopped=run stopped here, no proposal applied",
+}
+
+--- One photo of a run: render its current look, ask the server for the most
+--- similar photos and show the proposals. A single-photo run reports problems
+--- with the usual dialogs; inside a run they are only logged and summarised at
+--- the end, so the next photo still gets its turn.
+-- @return string "applied" | "skipped" | "failed" | "no_matches" | "render_failed" | "search_failed" | "stop"
+local function processPhoto(context, photo, props, position, resolveCache)
+    local index = position.index
+    local total = position.total
+    local batch = total > 1
+    local fileName = tostring(photo:getFormattedMetadata("fileName") or photo.localIdentifier)
+
+    log:info("Style Match: photo " .. index .. "/" .. total .. " started for " .. fileName)
+
+    local progressScope = LrProgressScope {
+        title = batch
+            and LOC("$$$/LrGeniusAI/StyleMatch/ProgressTitleBatch=Style Match - photo ^1 of ^2", index, total)
+            or LOC "$$$/LrGeniusAI/StyleMatch/ProgressTitle=Style Match...",
+        functionContext = context,
+    }
+
+    progressScope:setCaption(LOC "$$$/LrGeniusAI/StyleMatch/RenderingQuery=Rendering the current look...")
+    local jpegPath = SearchIndexAPI.exportPhotoForIndexing(photo)
+    if jpegPath == nil then
+        progressScope:done()
+        log:error("Style Match: photo " .. index .. "/" .. total .. " render failed for " .. fileName)
+        if not batch then
+            ErrorHandler.handleError(
+                LOC "$$$/LrGeniusAI/StyleMatch/ExportFailed=Could not render the target photo",
+                LOC "$$$/LrGeniusAI/StyleMatch/ExportFailedDetails=Lightroom failed to export a JPEG for the selected photo. Check the log for details."
+            )
+        end
+        return "render_failed"
+    end
+
+    local options = {
+        catalog_id = StyleWhitelist.catalogId(),
+        lrc_local_id = tostring(photo.localIdentifier or ""),
+        filename = photo:getFormattedMetadata("fileName"),
+        capture_time = captureTimeOf(photo),
+        top_k = matchCountInt(props.topK),
+        filters = { has_edits = props.onlyEdited == true },
+    }
+
+    if props.useDescription then
+        options.description = descriptionOf(photo)
+    end
+
+    log:trace("Style Match query options: " .. Util.dumpTable({
+        catalog_id = options.catalog_id,
+        lrc_local_id = options.lrc_local_id,
+        filename = options.filename,
+        capture_time = options.capture_time,
+        top_k = options.top_k,
+        filters = options.filters,
+        has_description = options.description ~= nil,
+    }))
+
+    progressScope:setCaption(LOC "$$$/LrGeniusAI/StyleMatch/Searching=Searching this catalog for a similar look...")
+    local response, err = SearchIndexAPI.styleMatchSearch(
+        photo:getRawMetadata("uuid"),
+        jpegPath,
+        options
+    )
+
+    LrFileUtils.delete(jpegPath)
+
+    local canceled = progressScope:isCanceled() == true
+    progressScope:done()
+
+    if canceled then
+        log:info("Style Match: run cancelled from the progress bar at photo " .. index .. "/" .. total)
+        return "stop"
+    end
+
+    if response == nil then
+        log:error("Style Match: photo " .. index .. "/" .. total .. " search failed for " .. fileName .. ": " .. tostring(err))
+        if not batch then
+            ErrorHandler.handleError(
+                LOC "$$$/LrGeniusAI/StyleMatch/SearchFailed=Style Match search failed",
+                tostring(err)
+            )
+        end
+        return "search_failed"
+    end
+
+    local matches = response.matches
+    if type(matches) ~= "table" or #matches == 0 then
+        log:info("Style Match: photo " .. index .. "/" .. total .. " has no match (" .. fileName .. ")")
+        if not batch then
+            local message = LOC "$$$/LrGeniusAI/StyleMatch/NoMatchesMessage=No similar photos were found in this catalog. Index more photos, or relax the 'only photos with develop edits' filter."
+            if props.onlyEdited then
+                message = message .. "\n\n" .. LOC "$$$/LrGeniusAI/StyleMatch/NoMatchesHint=Tip: rerun with the edits filter turned off."
+            end
+            LrDialogs.message(LOC "$$$/LrGeniusAI/StyleMatch/NoMatchesTitle=No Matches", message)
+        end
+        return "no_matches"
+    end
+
+    local resolved = resolveMatches(matches, resolveCache)
+    for matchIndex, match in ipairs(matches) do
+        match.photo = resolved[matchIndex]
+    end
+
+    local pending, dialogResult = showResultsDialog(context, photo, response, matches, position)
+    if dialogResult == "other" then
+        log:info("Style Match: run stopped by the user at photo " .. index .. "/" .. total .. " (" .. fileName .. ")")
+        return "stop"
+    end
+
+    local status = applySelectedSettings(context, photo, pending, { batch = batch })
+    log:info("Style Match: photo " .. index .. "/" .. total .. " ended - " .. tostring(status) .. " (" .. fileName .. ")")
+    return status
+end
+
+--- End-of-run report: one line per photo so a multi-photo run never ends silent.
+local function showRunSummary(entries, totalPhotos, stoppedAtIndex)
+    local lines = {}
+    for _, entry in ipairs(entries) do
+        table.insert(lines, string.format("%s  -  %s",
+            entry.fileName, LOC(STATUS_LABELS[entry.status] or "$$$/LrGeniusAI/StyleMatch/StatusUnknown=not processed")))
+    end
+    if stoppedAtIndex ~= nil then
+        table.insert(lines, "")
+        table.insert(lines, LOC("$$$/LrGeniusAI/StyleMatch/RunStopped=Run stopped after photo ^1; ^2 photo(s) were not processed.",
+            stoppedAtIndex, totalPhotos - stoppedAtIndex))
+    end
+
+    LrDialogs.message(
+        LOC "$$$/LrGeniusAI/StyleMatch/RunSummaryTitle=Style Match - run summary",
+        table.concat(lines, "\n"),
+        "info"
+    )
 end
 
 LrTasks.startAsyncTask(function()
     LrFunctionContext.callWithContext("StyleMatchTask", function(context)
         if not Util.waitForServerDialog() then return end
 
-        local photo = targetPhoto()
-        if photo == nil then
+        local photos = targetPhotos()
+        if #photos == 0 then
             LrDialogs.message(
                 LOC "$$$/LrGeniusAI/StyleMatch/NoTargetTitle=Style Match",
-                LOC "$$$/LrGeniusAI/StyleMatch/NoTargetMessage=Select exactly one photo in the Library or Develop module and run Style Match again."
+                LOC "$$$/LrGeniusAI/StyleMatch/NoTargetMessage=Select one or more photos in the Library module (or the photo to work on in Develop) and run Style Match again."
             )
             return
         end
 
-        local props = showOptionsDialog(context, photo)
+        local props = showOptionsDialog(context, photos)
         if props == nil then return end
 
-        local progressScope = LrProgressScope({
-            title = LOC "$$$/LrGeniusAI/StyleMatch/ProgressTitle=Style Match...",
-            functionContext = context,
-        })
+        local total = #photos
+        log:info("Style Match: run started for " .. total .. " photo(s), top_k=" .. tostring(matchCountInt(props.topK))
+            .. ", only_edited=" .. tostring(props.onlyEdited) .. ", use_description=" .. tostring(props.useDescription))
 
-        progressScope:setCaption(LOC "$$$/LrGeniusAI/StyleMatch/RenderingQuery=Rendering the current look...")
-        local jpegPath = SearchIndexAPI.exportPhotoForIndexing(photo)
-        if jpegPath == nil then
-            progressScope:done()
-            ErrorHandler.handleError(
-                LOC "$$$/LrGeniusAI/StyleMatch/ExportFailed=Could not render the target photo",
-                LOC "$$$/LrGeniusAI/StyleMatch/ExportFailedDetails=Lightroom failed to export a JPEG for the selected photo. Check the log for details."
-            )
-            return
-        end
+        local resolveCache = {}
+        local entries = {}
+        local applied = 0
+        local lastAppliedPhoto = nil
+        local stoppedAtIndex = nil
 
-        local options = {
-            catalog_id = StyleWhitelist.catalogId(),
-            lrc_local_id = tostring(photo.localIdentifier or ""),
-            filename = photo:getFormattedMetadata("fileName"),
-            capture_time = captureTimeOf(photo),
-            top_k = matchCountInt(props.topK),
-            filters = { has_edits = props.onlyEdited == true },
-        }
-
-        if props.useDescription then
-            options.description = descriptionOf(photo)
-        end
-
-        log:trace("Style Match query options: " .. Util.dumpTable({
-            catalog_id = options.catalog_id,
-            lrc_local_id = options.lrc_local_id,
-            filename = options.filename,
-            capture_time = options.capture_time,
-            top_k = options.top_k,
-            filters = options.filters,
-            has_description = options.description ~= nil,
-        }))
-
-        progressScope:setCaption(LOC "$$$/LrGeniusAI/StyleMatch/Searching=Searching this catalog for a similar look...")
-        local response, err = SearchIndexAPI.styleMatchSearch(
-            photo:getRawMetadata("uuid"),
-            jpegPath,
-            options
-        )
-
-        LrFileUtils.delete(jpegPath)
-        progressScope:done()
-
-        if response == nil then
-            ErrorHandler.handleError(
-                LOC "$$$/LrGeniusAI/StyleMatch/SearchFailed=Style Match search failed",
-                tostring(err)
-            )
-            return
-        end
-
-        local matches = response.matches
-        if type(matches) ~= "table" or #matches == 0 then
-            local message = LOC "$$$/LrGeniusAI/StyleMatch/NoMatchesMessage=No similar photos were found in this catalog. Index more photos, or relax the 'only photos with develop edits' filter."
-            if props.onlyEdited then
-                message = message .. "\n\n" .. LOC "$$$/LrGeniusAI/StyleMatch/NoMatchesHint=Tip: rerun with the edits filter turned off."
+        for index, photo in ipairs(photos) do
+            local status = processPhoto(context, photo, props, { index = index, total = total }, resolveCache)
+            table.insert(entries, {
+                fileName = tostring(photo:getFormattedMetadata("fileName") or photo.localIdentifier),
+                status = status,
+            })
+            if status == "applied" then
+                applied = applied + 1
+                lastAppliedPhoto = photo
             end
-            LrDialogs.message(LOC "$$$/LrGeniusAI/StyleMatch/NoMatchesTitle=No Matches", message)
-            return
+            if status == "stop" then
+                stoppedAtIndex = index
+                break
+            end
         end
 
-        local resolved = resolveMatches(matches)
-        for index, match in ipairs(matches) do
-            match.photo = resolved[index]
+        -- The Develop reveal is deferred to the end of a run: switching module
+        -- between photos would pull the user out of the flow and rebuild the UI.
+        if lastAppliedPhoto ~= nil and total > 1 then
+            revealInDevelop(lastAppliedPhoto)
         end
 
-        local pending = showResultsDialog(context, photo, response, matches)
-        applySelectedSettings(context, photo, pending)
+        log:info("Style Match: run done - " .. applied .. "/" .. total .. " photo(s) edited"
+            .. (stoppedAtIndex ~= nil and (", stopped at photo " .. stoppedAtIndex) or ""))
+
+        if total > 1 then
+            showRunSummary(entries, total, stoppedAtIndex)
+        end
     end)
 end)
