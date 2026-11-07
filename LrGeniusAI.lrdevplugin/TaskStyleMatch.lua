@@ -905,13 +905,55 @@ local function showResultsDialog(ctx, queryPhoto, response, matches, position)
         })
     end
 
+    -- Reminder of WHICH photo the chosen settings land on: without it the user
+    -- has to go back to the grid to remember what is being edited.
+    local targetReminder = batch
+        and LOC("$$$/LrGeniusAI/StyleMatch/ApplyingToBatch=Pick a match below to copy its look onto this photo (photo ^1 of ^2 in this run).", position.index, position.total)
+        or LOC "$$$/LrGeniusAI/StyleMatch/ApplyingToHint=Pick a match below to copy its look onto this photo."
+
+    local targetBlock
+    if queryPhoto ~= nil then
+        targetBlock = f:group_box {
+            title = LOC "$$$/LrGeniusAI/StyleMatch/ApplyingToTitle=Settings will be applied to",
+            fill_horizontal = 1,
+            f:row {
+                spacing = f:control_spacing(),
+                f:catalog_photo {
+                    photo = queryPhoto,
+                    width = 80,
+                },
+                f:column {
+                    spacing = 2,
+                    f:static_text {
+                        title = tostring(queryFileName),
+                        font = "<system/bold>",
+                    },
+                    f:static_text {
+                        title = targetReminder,
+                        size = "small",
+                        width_in_chars = 70,
+                    },
+                },
+            },
+        }
+    else
+        -- A tick-filtered run can reach a photo Lightroom no longer resolves;
+        -- never render a dead thumbnail, say what is missing instead.
+        targetBlock = f:static_text {
+            title = LOC("$$$/LrGeniusAI/StyleMatch/ApplyingToMissing=This photo is no longer in the catalog: ^1", tostring(queryFileName)),
+            font = "<system/bold>",
+            width_in_chars = 80,
+        }
+    end
+
     local contents = f:column {
         bind_to_object = props,
         spacing = f:control_spacing(),
+        targetBlock,
         f:static_text {
             title = batch
-                and LOC("$$$/LrGeniusAI/StyleMatch/ResultsHeaderBatch=Photo ^1 of ^2 - ^3 matches for ^4", position.index, position.total, #matches, tostring(queryFileName))
-                or LOC("$$$/LrGeniusAI/StyleMatch/ResultsHeader=^1 matches for ^2", #matches, tostring(queryFileName)),
+                and LOC("$$$/LrGeniusAI/StyleMatch/ResultsHeaderBatch=Photo ^1 of ^2 - ^3 matching photos", position.index, position.total, #matches)
+                or LOC("$$$/LrGeniusAI/StyleMatch/ResultsHeaderCount=^1 matching photos", #matches),
             font = "<system/bold>",
         },
         f:static_text {
@@ -939,6 +981,10 @@ local function showResultsDialog(ctx, queryPhoto, response, matches, position)
         dialogArgs.title = LOC "$$$/LrGeniusAI/StyleMatch/ResultsTitle=Style Match Results"
         dialogArgs.cancelVerb = LOC "$$$/LrGeniusAI/common/Close=Close"
     end
+
+    log:info("Style Match: results dialog opened for " .. tostring(queryFileName)
+        .. " (photo " .. tostring(position.index) .. "/" .. tostring(position.total)
+        .. ", " .. #matches .. " match(es))")
 
     local dialogResult = LrDialogs.presentModalDialog(dialogArgs)
 
